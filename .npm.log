@@ -1,0 +1,7 @@
+npm error code ENOTEMPTY
+npm error syscall rename
+npm error path /sessions/beautiful-affectionate-planck/mnt/outputs/flimix/node_modules/caniuse-lite
+npm error dest /sessions/beautiful-affectionate-planck/mnt/outputs/flimix/node_modules/.caniuse-lite-qNRvpRzi
+npm error errno -39
+npm error ENOTEMPTY: directory not empty, rename '/sessions/beautiful-affectionate-planck/mnt/outputs/flimix/node_modules/caniuse-lite' -> '/sessions/beautiful-affectionate-planck/mnt/outputs/flimix/node_modules/.caniuse-lite-qNRvpRzi'
+npm error A complete log of this run can be found in: /sessions/beautiful-affectionate-planck/.npm/_logs/2026-07-03T08_26_59_819Z-debug-0.log

@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Inter", "Segoe UI", system-ui, sans-serif;
+}
+
+@layer base {
+  html {
+    @apply antialiased;
+  }
+  body {
+    @apply bg-ink-950 text-mist-100 min-h-screen;
+  }
+  ::selection {
+    @apply bg-royal-600 text-white;
+  }
+  *:focus-visible {
+    @apply outline-none ring-2 ring-royal-400 ring-offset-2 ring-offset-ink-950;
+  }
+}
+
+@layer components {
+  .container-fx {
+    @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-10;
+  }
+  .skeleton {
+    @apply animate-shimmer rounded-lg bg-[linear-gradient(90deg,#15121d_25%,#1e1a29_50%,#15121d_75%)] bg-[length:200%_100%];
+  }
+  .card-surface {
+    @apply rounded-xl border border-ink-600/50 bg-ink-800;
+  }
+}
+
+/* Hide scrollbars on horizontal content rows but keep scrollability */
+.row-scroll {
+  scrollbar-width: none;
+}
+.row-scroll::-webkit-scrollbar {
+  display: none;
+}
