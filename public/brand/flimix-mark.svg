@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 368" fill="none">
+  <defs>
+    <linearGradient id="fxStrip" x1="40" y1="20" x2="300" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6d3bff"/>
+      <stop offset="0.55" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#a855f7"/>
+    </linearGradient>
+    <linearGradient id="fxStripV" x1="20" y1="60" x2="120" y2="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7c4dff"/>
+      <stop offset="1" stop-color="#a06bff"/>
+    </linearGradient>
+    <linearGradient id="fxPlay" x1="150" y1="150" x2="295" y2="320" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#e06bf0"/>
+    </linearGradient>
+  </defs>
+  <!-- film-strip stem -->
+  <path fill="url(#fxStripV)" d="M20 96h85v238q0 18-16 18H36q-16 0-16-18V96Z"/>
+  <!-- top arm sweeping right -->
+  <path fill="url(#fxStrip)" d="M20 96V58q0-43 46-43h192q52 0 52 50 0 26-22 30l-183 5h-85Z"/>
+  <path fill="url(#fxStrip)" d="M105 15h153q52 0 52 50 0 35-38 35H105V15Z"/>
+  <!-- perforations -->
+  <g fill="#0d0a16">
+    <rect x="34" y="118" width="17" height="17" rx="4"/>
+    <rect x="34" y="149" width="17" height="17" rx="4"/>
+    <rect x="34" y="180" width="17" height="17" rx="4"/>
+    <rect x="34" y="211" width="17" height="17" rx="4"/>
+    <rect x="34" y="242" width="17" height="17" rx="4"/>
+    <rect x="34" y="273" width="17" height="17" rx="4"/>
+    <rect x="34" y="304" width="17" height="17" rx="4"/>
+    <rect x="34" y="42" width="17" height="17" rx="4"/>
+    <rect x="34" y="73" width="17" height="17" rx="4"/>
+  </g>
+  <!-- play triangle -->
+  <path fill="url(#fxPlay)" d="M155 141q-15-9-15 9v160q0 18 15 9l139-80q15-9 0-18l-139-80Z"/>
+</svg>

@@ -458,7 +458,7 @@ export default async function LandingPage() {
             <div className="mt-7 flex flex-wrap gap-3">
               <Link
                 href={hero.href}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-royal-500 px-7 py-3.5 text-base font-medium text-white shadow-accent transition hover:bg-royal-600"
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-gradient px-7 py-3.5 text-base font-medium text-white shadow-accent transition hover:brightness-110"
               >
                 <Play size={18} aria-hidden="true" />
                 {t.watchNow}
@@ -484,7 +484,7 @@ export default async function LandingPage() {
             <div className="mt-8 flex justify-center gap-3">
               <Link
                 href="/subscribe"
-                className="rounded-lg bg-royal-500 px-7 py-3.5 font-medium text-white shadow-accent transition hover:bg-royal-600"
+                className="rounded-lg bg-brand-gradient px-7 py-3.5 font-medium text-white shadow-accent transition hover:brightness-110"
               >
                 {t.choosePlan}
               </Link>
@@ -640,7 +640,7 @@ export default async function LandingPage() {
           </p>
           <Link
             href="/subscribe"
-            className="mt-7 inline-flex items-center justify-center rounded-lg bg-royal-500 px-8 py-3.5 text-base font-medium text-white shadow-accent transition hover:bg-royal-600"
+            className="mt-7 inline-flex items-center justify-center rounded-lg bg-brand-gradient px-8 py-3.5 text-base font-medium text-white shadow-accent transition hover:brightness-110"
           >
             {t.choosePlan}
           </Link>

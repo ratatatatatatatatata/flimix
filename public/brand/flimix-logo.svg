@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 873 873" fill="none">
+  <defs>
+    <linearGradient id="fxStrip" x1="330" y1="180" x2="600" y2="290" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6d3bff"/>
+      <stop offset="0.55" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#a855f7"/>
+    </linearGradient>
+    <linearGradient id="fxStripV" x1="300" y1="220" x2="420" y2="560" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7c4dff"/>
+      <stop offset="1" stop-color="#a06bff"/>
+    </linearGradient>
+    <linearGradient id="fxPlay" x1="430" y1="330" x2="590" y2="500" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#e06bf0"/>
+    </linearGradient>
+    <linearGradient id="fxX" x1="620" y1="600" x2="700" y2="680" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#e06bf0"/>
+    </linearGradient>
+  </defs>
+  <rect width="873" height="873" fill="#0d0a16"/>
+  <g transform="translate(280,155)">
+    <path fill="url(#fxStripV)" d="M20 96h85v238q0 18-16 18H36q-16 0-16-18V96Z"/>
+    <path fill="url(#fxStrip)" d="M105 15h153q52 0 52 50 0 35-38 35H105V15Z"/>
+    <path fill="url(#fxStrip)" d="M20 96V58q0-43 46-43h39v85H20Z"/>
+    <g fill="#0d0a16">
+      <rect x="34" y="42" width="17" height="17" rx="4"/>
+      <rect x="34" y="73" width="17" height="17" rx="4"/>
+      <rect x="34" y="118" width="17" height="17" rx="4"/>
+      <rect x="34" y="149" width="17" height="17" rx="4"/>
+      <rect x="34" y="180" width="17" height="17" rx="4"/>
+      <rect x="34" y="211" width="17" height="17" rx="4"/>
+      <rect x="34" y="242" width="17" height="17" rx="4"/>
+      <rect x="34" y="273" width="17" height="17" rx="4"/>
+      <rect x="34" y="304" width="17" height="17" rx="4"/>
+    </g>
+    <path fill="url(#fxPlay)" d="M155 141q-15-9-15 9v160q0 18 15 9l139-80q15-9 0-18l-139-80Z"/>
+  </g>
+  <text x="436" y="660" text-anchor="middle" font-family="Inter, 'Segoe UI', sans-serif" font-size="86" font-weight="600" letter-spacing="30" fill="#ffffff">FLIMI<tspan fill="url(#fxX)">X</tspan></text>
+</svg>

@@ -21,6 +21,7 @@ const config: Config = {
           700: "#5d2fc0",
         },
         glow: "#b794f6", // violet glow (use sparingly)
+        flare: "#e06bf0", // fuchsia end of the brand gradient (logo play mark)
         mist: {
           100: "#f2eefb",
           300: "#c9c2d9",
@@ -37,6 +38,8 @@ const config: Config = {
         accent: "0 4px 24px rgba(139,92,246,0.25)",
       },
       backgroundImage: {
+        "brand-gradient":
+          "linear-gradient(135deg, #6d3bff 0%, #8b5cf6 45%, #e06bf0 100%)",
         "hero-fade":
           "linear-gradient(to top, #07060a 5%, rgba(7,6,10,0.6) 45%, rgba(7,6,10,0.15) 100%)",
         "card-fade":
