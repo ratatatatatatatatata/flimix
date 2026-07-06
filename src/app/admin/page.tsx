@@ -243,7 +243,7 @@ export default async function AdminOverviewPage() {
     if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + p.amount_mnt);
   }
   const revenueSeries: MiniBarDatum[] = [...buckets.entries()].map(([label, value]) => ({
-    label: label.slice(5) + "-р сар",
+    label: String(Number(label.slice(5))) + "-р сар",
     value,
   }));
 

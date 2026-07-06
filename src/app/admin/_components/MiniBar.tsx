@@ -4,8 +4,9 @@ export interface MiniBarDatum {
 }
 
 /**
- * Dependency-free inline SVG bar chart for small admin dashboards.
- * Server-renderable; values are shown via <title> tooltips.
+ * Dependency-free bar chart for small admin dashboards.
+ * Bars are SVG (stretchable), labels/values are HTML so text never distorts.
+ * Server-renderable.
  */
 export function MiniBar({
   data,
@@ -19,47 +20,51 @@ export function MiniBar({
   if (data.length === 0) {
     return <p className="text-sm text-mist-500">Өгөгдөл алга</p>;
   }
-  const max = Math.max(...data.map((d) => d.value), 1);
-  const barW = 100 / data.length;
-  const chartH = height - 22;
+  const max = Math.max(...data.map((d) => d.value));
+  const allZero = max <= 0;
 
   return (
-    <svg
-      viewBox={`0 0 100 ${height}`}
-      className="w-full"
-      role="img"
-      aria-label="Баганан диаграм"
-      preserveAspectRatio="none"
-      style={{ height }}
-    >
-      {data.map((d, i) => {
-        const h = Math.max((d.value / max) * (chartH - 6), d.value > 0 ? 2 : 0.5);
-        const x = i * barW + barW * 0.15;
-        const w = barW * 0.7;
-        return (
-          <g key={`${d.label}-${i}`}>
-            <rect
-              x={x}
-              y={chartH - h}
-              width={w}
-              height={h}
-              rx={1}
-              className="fill-royal-500/80 hover:fill-royal-400"
+    <div>
+      <div
+        className="flex items-end gap-2 border-b border-ink-600/60"
+        style={{ height }}
+      >
+        {data.map((d, i) => {
+          const pct = allZero ? 0 : Math.max((d.value / max) * 100, d.value > 0 ? 3 : 0);
+          return (
+            <div
+              key={`${d.label}-${i}`}
+              className="group relative flex h-full flex-1 items-end justify-center"
+              title={`${d.label}: ${formatValue(d.value)}`}
             >
-              <title>{`${d.label}: ${formatValue(d.value)}`}</title>
-            </rect>
-            <text
-              x={i * barW + barW / 2}
-              y={height - 8}
-              textAnchor="middle"
-              className="fill-mist-500"
-              style={{ fontSize: 4.5 }}
-            >
-              {d.label}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
+              <div
+                className="w-full max-w-14 rounded-t bg-royal-500/80 transition group-hover:bg-royal-400"
+                style={{ height: `${pct}%`, minHeight: d.value > 0 ? 4 : 0 }}
+              />
+              {d.value > 0 ? (
+                <span className="pointer-events-none absolute -top-1 hidden -translate-y-full rounded bg-ink-700 px-1.5 py-0.5 text-[10px] text-mist-100 group-hover:block">
+                  {formatValue(d.value)}
+                </span>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-1.5 flex gap-2">
+        {data.map((d, i) => (
+          <span
+            key={`${d.label}-l-${i}`}
+            className="flex-1 truncate text-center text-[11px] text-mist-500"
+          >
+            {d.label}
+          </span>
+        ))}
+      </div>
+      {allZero ? (
+        <p className="mt-3 text-center text-sm text-mist-500">
+          Одоогоор орлого бүртгэгдээгүй байна
+        </p>
+      ) : null}
+    </div>
   );
 }
