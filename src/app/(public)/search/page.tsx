@@ -9,7 +9,15 @@ export const metadata: Metadata = {
   description: "FLIMIX-ээс кино, цуврал хайх.",
 };
 
-export default async function SearchPage() {
+export default async function SearchPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const qRaw = sp.q;
+  const initialQuery = (Array.isArray(qRaw) ? qRaw[0] : qRaw)?.trim() ?? "";
+
   const db = await createClient();
 
   const [moviesRes, seriesRes] = await Promise.all([
@@ -73,7 +81,11 @@ export default async function SearchPage() {
       <h1 className="font-display text-2xl font-bold text-white sm:text-3xl">
         {t.search}
       </h1>
-      <SearchClient trending={trending} recommendations={popular} />
+      <SearchClient
+        initialQuery={initialQuery}
+        trending={trending}
+        recommendations={popular}
+      />
     </div>
   );
 }

@@ -76,6 +76,7 @@ export function FilterBar({
   genres,
   countries,
   languages,
+  years,
   pagination,
   children,
 }: {
@@ -83,6 +84,7 @@ export function FilterBar({
   genres: ChipOption[];
   countries: ChipOption[];
   languages: ChipOption[];
+  years: number[];
   pagination: PaginationState | null;
   children: React.ReactNode;
 }) {
@@ -160,11 +162,40 @@ export function FilterBar({
         ) : null}
 
         <ChipRow label={t.year}>
-          <Chip active={!f.decade} onSelect={() => go({ decade: null })}>
+          {years.length > 0 ? (
+            <select
+              value={f.year ?? ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                go({ year: v ? Number(v) : null, decade: null });
+              }}
+              aria-label={t.year}
+              className={`h-[34px] shrink-0 cursor-pointer rounded-full border px-3.5 text-sm outline-none transition ${
+                f.year
+                  ? "border-royal-500 bg-royal-500 font-medium text-white"
+                  : "border-ink-600 bg-ink-800 text-mist-300 hover:border-royal-500/50 hover:text-white"
+              }`}
+            >
+              <option value="">Бүх он</option>
+              {years.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          <Chip
+            active={!f.decade && !f.year}
+            onSelect={() => go({ decade: null, year: null })}
+          >
             Бүгд
           </Chip>
           {DECADES.map((d) => (
-            <Chip key={d} active={f.decade === d} onSelect={() => go({ decade: d })}>
+            <Chip
+              key={d}
+              active={f.decade === d}
+              onSelect={() => go({ decade: d, year: null })}
+            >
               {d}-аад он
             </Chip>
           ))}

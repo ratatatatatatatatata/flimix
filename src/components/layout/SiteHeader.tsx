@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Search, User } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
+import { HeaderSearch } from "@/components/layout/HeaderSearch";
 import { MobileNav, type MobileNavItem } from "@/components/layout/MobileNav";
 import { getSession } from "@/lib/auth";
 import { t } from "@/lib/i18n";
@@ -35,10 +36,11 @@ export async function SiteHeader() {
           </nav>
         </div>
         <div className="flex items-center gap-3">
+          <HeaderSearch />
           <Link
             href="/search"
             aria-label={t.search}
-            className="rounded-lg p-2 text-mist-300 transition hover:bg-ink-700 hover:text-white"
+            className="rounded-lg p-2 text-mist-300 transition hover:bg-ink-700 hover:text-white md:hidden"
           >
             <Search size={20} />
           </Link>

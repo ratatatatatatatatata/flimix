@@ -50,13 +50,16 @@ function writeRecent(items: string[]): void {
 }
 
 export function SearchClient({
+  initialQuery = "",
   trending,
   recommendations,
 }: {
+  /** Prefills the input (e.g. from /search?q=...) and fetches immediately. */
+  initialQuery?: string;
   trending: string[];
   recommendations: SuggestionItem[];
 }) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [recent, setRecent] = useState<string[]>([]);

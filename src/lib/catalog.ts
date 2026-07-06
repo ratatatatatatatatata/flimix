@@ -408,7 +408,9 @@ async function queryTable<T>(
 
   if (f.genre) q = q.eq(`${junction}.genres.slug`, f.genre);
   if (f.country) q = q.eq("countries.code", f.country);
-  if (f.decade) q = q.gte("release_year", f.decade).lte("release_year", f.decade + 9);
+  if (f.year) q = q.eq("release_year", f.year);
+  else if (f.decade)
+    q = q.gte("release_year", f.decade).lte("release_year", f.decade + 9);
   if (idFilter !== null) q = q.in("id", idFilter);
 
   const ordered =
@@ -870,6 +872,71 @@ export const getGenreCounts = unstable_cache(
       .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   },
   ["catalog-genre-counts"],
+  CACHE_OPTS,
+);
+
+export interface TopRatedTitle {
+  slug: string;
+  type: "movie" | "series";
+  title: string;
+  year: number | null;
+  rating: number;
+  posterUrl: string | null;
+}
+
+interface RatedRow {
+  slug: string;
+  title_mn: string;
+  release_year: number | null;
+  rating: number | null;
+  poster_url: string | null;
+}
+
+/**
+ * Highest-rated published titles, movies + series mixed (rating desc, rows
+ * without a rating excluded). Used by the footer widget and the landing grid.
+ */
+export const getTopRatedTitles = unstable_cache(
+  async (limit: number = 10): Promise<TopRatedTitle[]> => {
+    const db = createPublicClient();
+    const cols = "slug, title_mn, release_year, rating, poster_url";
+    const [moviesRes, seriesRes] = await Promise.all([
+      db
+        .from("movies")
+        .select(cols)
+        .eq("status", "published")
+        .is("deleted_at", null)
+        .not("rating", "is", null)
+        .order("rating", { ascending: false })
+        .limit(limit),
+      db
+        .from("series")
+        .select(cols)
+        .eq("status", "published")
+        .is("deleted_at", null)
+        .not("rating", "is", null)
+        .order("rating", { ascending: false })
+        .limit(limit),
+    ]);
+    const toItems = (rows: RatedRow[], type: "movie" | "series"): TopRatedTitle[] =>
+      rows
+        .filter((r): r is RatedRow & { rating: number } => typeof r.rating === "number")
+        .map((r) => ({
+          slug: r.slug,
+          type,
+          title: r.title_mn,
+          year: r.release_year,
+          rating: r.rating,
+          posterUrl: r.poster_url,
+        }));
+    return [
+      ...toItems((moviesRes.data ?? []) as unknown as RatedRow[], "movie"),
+      ...toItems((seriesRes.data ?? []) as unknown as RatedRow[], "series"),
+    ]
+      .sort((a, b) => b.rating - a.rating)
+      .slice(0, limit);
+  },
+  ["catalog-top-rated-titles"],
   CACHE_OPTS,
 );
 

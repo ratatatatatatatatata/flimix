@@ -9,7 +9,6 @@ import {
   RowSkeleton,
 } from "@/components/ui/Skeletons";
 import { getSession } from "@/lib/auth";
-import { DECADES } from "@/lib/browse";
 import {
   AUTO_SEE_ALL,
   getAutoSectionContent,
@@ -21,6 +20,7 @@ import {
   getLatestMoviesGrid,
   getPublishedSections,
   getReleaseYears,
+  getTopRatedTitles,
   manualSectionItems,
   parseAutoSource,
   type CatalogCard,
@@ -188,6 +188,30 @@ async function LatestMoviesSection() {
             rating={m.rating}
             isFree={m.isFree}
             cornerBadge={m.subtitleBadge}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** ШИЛДЭГ КИНОНУУД — highest-rated titles, poster grid. */
+async function TopRatedSection() {
+  const cards = await getTopRatedTitles(10);
+  if (cards.length === 0) return null;
+  return (
+    <section className="space-y-4">
+      <SectionHeading title="ШИЛДЭГ КИНОНУУД" seeAllHref="/browse?sort=rating" />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5">
+        {cards.map((c) => (
+          <PosterCard
+            key={`top-${c.type}-${c.slug}`}
+            fluid
+            href={`/${c.type}/${c.slug}`}
+            title={c.title}
+            posterUrl={c.posterUrl}
+            year={c.year}
+            rating={c.rating}
           />
         ))}
       </div>
@@ -384,23 +408,14 @@ async function CatalogSections() {
 
 /* ------------------------------ genres & years ------------------------------ */
 
-/** Only the decades /browse actually filters by (see src/lib/browse.ts). */
-const DECADE_LABELS: Record<number, string> = {
-  2020: "2020-иод он",
-  2010: "2010-аад он",
-  2000: "2000-аад он",
-  1990: "1990-ээд он",
-  1980: "1980-аад он",
-};
-
 const chipClass =
   "inline-flex items-center gap-1.5 rounded-full border border-ink-600 bg-ink-800 px-3.5 py-1.5 text-sm text-mist-100 transition hover:border-royal-500/60 hover:text-white";
 
-/** Төрөл ба он — genre chip cloud + decade chips, both linking into /browse. */
+/** Төрөл ба он — genre chip cloud + per-year chips, both linking into /browse. */
 async function GenresYearsSection() {
-  const [genres, years] = await Promise.all([getGenreCounts(), getReleaseYears()]);
-  const decades = DECADES.filter((d) => years.some((y) => y >= d && y <= d + 9));
-  if (genres.length === 0 && decades.length === 0) return null;
+  const [genres, allYears] = await Promise.all([getGenreCounts(), getReleaseYears()]);
+  const years = allYears.slice(0, 20);
+  if (genres.length === 0 && years.length === 0) return null;
   return (
     <section className="border-y border-ink-600/40 bg-ink-900/60">
       <div className="container-fx grid gap-10 py-14 md:grid-cols-2">
@@ -417,13 +432,13 @@ async function GenresYearsSection() {
             </div>
           </div>
         ) : null}
-        {decades.length > 0 ? (
+        {years.length > 0 ? (
           <div>
             <h2 className="font-display text-xl font-bold text-white">{t.year}</h2>
             <div className="mt-5 flex flex-wrap gap-2">
-              {decades.map((d) => (
-                <Link key={d} href={`/browse?decade=${d}`} className={chipClass}>
-                  {DECADE_LABELS[d] ?? `${d}`}
+              {years.map((y) => (
+                <Link key={y} href={`/browse?year=${y}`} className={chipClass}>
+                  {y} он
                 </Link>
               ))}
             </div>
@@ -511,6 +526,10 @@ export default function LandingPage() {
 
         <Suspense fallback={<GridSkeleton count={12} />}>
           <LatestMoviesSection />
+        </Suspense>
+
+        <Suspense fallback={<GridSkeleton count={10} />}>
+          <TopRatedSection />
         </Suspense>
 
         <Suspense fallback={<RowSkeleton />}>

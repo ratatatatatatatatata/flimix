@@ -7,7 +7,7 @@ import {
   parseBrowseFilters,
   type BrowseSearchParams,
 } from "@/lib/browse";
-import { browseCatalog, getBrowseTaxonomies } from "@/lib/catalog";
+import { browseCatalog, getBrowseTaxonomies, getReleaseYears } from "@/lib/catalog";
 import { t } from "@/lib/i18n";
 import { FilterBar } from "./FilterBar";
 
@@ -39,8 +39,9 @@ export default async function BrowsePage({
   const sp = await searchParams;
   const f = parseBrowseFilters(sp);
 
-  const [{ genres, countries, languages }, result] = await Promise.all([
+  const [{ genres, countries, languages }, years, result] = await Promise.all([
     getBrowseTaxonomies(),
+    getReleaseYears(),
     browseCatalog(f),
   ]);
 
@@ -84,6 +85,7 @@ export default async function BrowsePage({
         genres={genres.map((g) => ({ key: g.id, label: g.name_mn, value: g.slug }))}
         countries={countries.map((c) => ({ key: c.id, label: c.name_mn, value: c.code }))}
         languages={languages.map((l) => ({ key: l.id, label: l.name_mn, value: l.code }))}
+        years={years}
         pagination={cards.length > 0 ? { page: f.page, hasPrev, hasNext } : null}
       >
         {cards.length === 0 ? (
