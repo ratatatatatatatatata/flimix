@@ -217,12 +217,17 @@ export function Billboard({ data }: { data: BillboardData }) {
 
       {/* Legibility gradient */}
       <div className="absolute inset-0 bg-hero-fade" aria-hidden="true" />
+      {/* Bottom blend into the first content row */}
+      <div
+        className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-ink-950 via-ink-950/60 to-transparent"
+        aria-hidden="true"
+      />
 
       {/* Content */}
-      <div className="relative z-10 flex min-h-[46vh] items-end sm:min-h-[60vh]">
-        <div className="container-fx w-full animate-fade-in pb-10 pt-36 sm:pb-14 sm:pt-48">
+      <div className="relative z-10 flex min-h-[64vh] items-end md:min-h-[75vh]">
+        <div className="container-fx w-full animate-fade-in pb-16 pt-36 sm:pb-28 sm:pt-48">
           <Badge tone="accent">ШИНЭ</Badge>
-          <h1 className="mt-3 max-w-2xl font-display text-3xl font-bold leading-tight text-white sm:text-5xl">
+          <h1 className="mt-3 max-w-2xl font-display text-2xl font-bold leading-tight text-white sm:text-4xl lg:text-5xl">
             {data.title}
           </h1>
           {metaParts.length > 0 ? (

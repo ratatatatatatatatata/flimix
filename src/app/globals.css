@@ -41,3 +41,19 @@
 .row-scroll::-webkit-scrollbar {
   display: none;
 }
+
+/* Header search: icon expands into an input */
+@keyframes searchExpand {
+  from {
+    max-width: 2.5rem;
+    opacity: 0.4;
+  }
+  to {
+    max-width: 20rem;
+    opacity: 1;
+  }
+}
+.search-expand {
+  overflow: hidden;
+  animation: searchExpand 0.25s ease-out;
+}

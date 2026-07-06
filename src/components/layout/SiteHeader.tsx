@@ -1,9 +1,11 @@
 import Link from "next/link";
-import { Search, User } from "lucide-react";
+import { signOutAction } from "@/app/account/actions";
 import { Logo } from "@/components/brand/Logo";
 import { GenreMenu, type GenreLink } from "@/components/layout/GenreMenu";
 import { HeaderSearch } from "@/components/layout/HeaderSearch";
+import { HeaderShell } from "@/components/layout/HeaderShell";
 import { MobileNav, type MobileNavItem } from "@/components/layout/MobileNav";
+import { ProfileMenu } from "@/components/layout/ProfileMenu";
 import { getSession } from "@/lib/auth";
 import { getGenreCounts } from "@/lib/catalog";
 import { t } from "@/lib/i18n";
@@ -26,7 +28,10 @@ async function getMenuGenres(): Promise<GenreLink[]> {
   }
 }
 
-/** Global site header (server component — reads session + cached genres). */
+/**
+ * Global site header (server component — reads session + cached genres).
+ * Rendered inside a fixed, scroll-aware shell that overlays the billboard.
+ */
 export async function SiteHeader() {
   const [session, genres] = await Promise.all([getSession(), getMenuGenres()]);
 
@@ -38,10 +43,12 @@ export async function SiteHeader() {
     { kind: "link", ...guideLink },
   ];
 
+  const initial = (session?.email?.trim().charAt(0) ?? "F").toUpperCase();
+
   return (
-    <header className="sticky top-0 z-40 border-b border-ink-600/40 bg-ink-950/85 backdrop-blur">
-      <div className="container-fx flex h-16 items-center justify-between gap-4">
-        <div className="flex items-center gap-2 md:gap-8">
+    <HeaderShell>
+      <div className="container-fx flex h-16 items-center justify-between gap-3 sm:gap-4">
+        <div className="flex min-w-0 items-center gap-2 md:gap-8">
           <MobileNav items={mobileItems} />
           <Logo />
           <nav className="hidden items-center gap-6 md:flex" aria-label="Үндсэн цэс">
@@ -63,23 +70,10 @@ export async function SiteHeader() {
             </Link>
           </nav>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3">
           <HeaderSearch />
-          <Link
-            href="/search"
-            aria-label={t.search}
-            className="rounded-lg p-2 text-mist-300 transition hover:bg-ink-700 hover:text-white md:hidden"
-          >
-            <Search size={20} />
-          </Link>
           {session ? (
-            <Link
-              href="/account"
-              aria-label={t.myAccount}
-              className="flex items-center gap-2 rounded-lg p-2 text-mist-300 transition hover:bg-ink-700 hover:text-white"
-            >
-              <User size={20} />
-            </Link>
+            <ProfileMenu initial={initial} signOutAction={signOutAction} />
           ) : (
             <>
               <Link
@@ -98,6 +92,6 @@ export async function SiteHeader() {
           )}
         </div>
       </div>
-    </header>
+    </HeaderShell>
   );
 }

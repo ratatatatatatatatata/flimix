@@ -87,9 +87,9 @@ export function CarouselSkeleton() {
 /** Full-bleed shimmer matching the landing trailer billboard. */
 export function BillboardSkeleton() {
   return (
-    <section className="relative min-h-[46vh] overflow-hidden sm:min-h-[60vh]" aria-hidden="true">
+    <section className="relative min-h-[64vh] overflow-hidden md:min-h-[75vh]" aria-hidden="true">
       <div className="skeleton absolute inset-0 rounded-none" />
-      <div className="container-fx relative flex min-h-[46vh] flex-col justify-end gap-4 pb-12 sm:min-h-[60vh]">
+      <div className="container-fx relative flex min-h-[64vh] flex-col justify-end gap-4 pb-16 md:min-h-[75vh] sm:pb-28">
         <div className="skeleton h-6 w-16 rounded-full" />
         <div className="skeleton h-10 w-2/3 max-w-lg" />
         <div className="skeleton h-4 w-1/2 max-w-sm" />
@@ -99,19 +99,5 @@ export function BillboardSkeleton() {
         </div>
       </div>
     </section>
-  );
-}
-
-/** card-surface shimmer for the landing sidebar widgets. */
-export function SidebarWidgetSkeleton({ rows = 6 }: { rows?: number }) {
-  return (
-    <div className="card-surface space-y-3 p-4" aria-hidden="true">
-      <div className="skeleton h-5 w-28" />
-      <div className="space-y-2">
-        {Array.from({ length: rows }).map((_, i) => (
-          <div key={i} className="skeleton h-8 w-full" />
-        ))}
-      </div>
-    </div>
   );
 }

@@ -1,7 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Star } from "lucide-react";
+import { Play, Star } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
+import { t } from "@/lib/i18n";
 
 export interface PosterCardProps {
   href: string;
@@ -21,7 +22,11 @@ export interface PosterCardProps {
   fluid?: boolean;
 }
 
-/** Vertical poster card used in rows and grids. */
+/**
+ * Vertical poster card used in rows and grids. On pointer devices (md+) the
+ * poster zooms (transform only — no layout shift) and a bottom info overlay
+ * with a play affordance fades in; on touch a tap simply navigates.
+ */
 export function PosterCard({
   href,
   title,
@@ -41,12 +46,12 @@ export function PosterCard({
       href={href}
       className={
         fluid
-          ? "group relative block w-full"
-          : "group relative block w-36 shrink-0 sm:w-44"
+          ? "group relative block w-full snap-start md:hover:z-20"
+          : "group relative block w-36 shrink-0 snap-start sm:w-44 md:hover:z-20"
       }
       title={title}
     >
-      <div className="relative aspect-[2/3] overflow-hidden rounded-lg border border-ink-600/40 bg-ink-800 shadow-card transition duration-300 group-hover:border-royal-500/50 group-hover:shadow-accent">
+      <div className="relative aspect-[2/3] origin-center overflow-hidden rounded-lg border border-ink-600/40 bg-ink-800 shadow-card transition duration-200 ease-out group-hover:border-royal-500/50 group-hover:shadow-accent md:group-hover:scale-110">
         {posterUrl ? (
           <Image
             src={posterUrl}
@@ -57,7 +62,7 @@ export function PosterCard({
                 ? "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
                 : "(max-width: 640px) 144px, 176px"
             }
-            className="object-cover transition duration-300 group-hover:scale-[1.03]"
+            className="object-cover"
           />
         ) : (
           <div className="flex h-full items-center justify-center p-3 text-center text-sm text-mist-500">
@@ -79,6 +84,37 @@ export function PosterCard({
             {rating.toFixed(1)}
           </span>
         ) : null}
+        {/* Hover info overlay — desktop only, pure CSS */}
+        <div
+          className="pointer-events-none absolute inset-0 hidden flex-col justify-end bg-card-fade p-3 opacity-0 transition-opacity duration-200 md:flex md:group-hover:opacity-100"
+          aria-hidden="true"
+        >
+          <p className="line-clamp-2 text-sm font-semibold leading-snug text-white">
+            {title}
+          </p>
+          {year || (typeof rating === "number" && rating > 0) ? (
+            <p className="mt-0.5 flex items-center gap-2 text-[11px] text-mist-300">
+              {year ? <span>{year}</span> : null}
+              {typeof rating === "number" && rating > 0 ? (
+                <span className="inline-flex items-center gap-0.5">
+                  <Star
+                    size={10}
+                    className="text-royal-300"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  />
+                  {rating.toFixed(1)}
+                </span>
+              ) : null}
+            </p>
+          ) : null}
+          <span className="mt-2 inline-flex items-center gap-2 text-xs font-semibold text-white">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-gradient shadow-accent">
+              <Play size={11} fill="currentColor" aria-hidden="true" />
+            </span>
+            {t.watchNow}
+          </span>
+        </div>
         {typeof progressPercent === "number" && progressPercent > 0 ? (
           <div className="absolute inset-x-0 bottom-0 h-1 bg-ink-700">
             <div

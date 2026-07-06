@@ -1,27 +1,19 @@
 import { Suspense } from "react";
-import Image from "next/image";
 import Link from "next/link";
-import { ChevronRight, Monitor, Smartphone, Star, Tablet, Tv } from "lucide-react";
+import { Monitor, Smartphone, Tablet, Tv } from "lucide-react";
 import { ContentRow } from "@/components/catalog/ContentRow";
 import { PosterCard } from "@/components/catalog/PosterCard";
-import {
-  BillboardSkeleton,
-  GridSkeleton,
-  RowSkeleton,
-  SidebarWidgetSkeleton,
-} from "@/components/ui/Skeletons";
+import { BillboardSkeleton, RowSkeleton } from "@/components/ui/Skeletons";
 import { getSession } from "@/lib/auth";
 import {
   AUTO_SEE_ALL,
   getAutoSectionContent,
   getBillboard,
   getCatalogCounts,
-  getGenreCounts,
   getLandingFallbackRows,
   getLatestEpisodesGrid,
   getLatestMoviesGrid,
   getPublishedSections,
-  getReleaseYears,
   getTopRatedTitles,
   manualSectionItems,
   parseAutoSource,
@@ -60,44 +52,12 @@ async function getVisibleSections(): Promise<HomepageSection[]> {
   });
 }
 
-/* ------------------------------ section heading ----------------------------- */
-
-function SectionHeading({
-  title,
-  count,
-  seeAllHref,
-}: {
-  title: string;
-  count?: number;
-  seeAllHref: string;
-}) {
-  return (
-    <div className="flex flex-wrap items-baseline justify-between gap-2">
-      <div className="flex items-baseline gap-3">
-        <h2 className="font-display text-lg font-bold tracking-wide text-white sm:text-xl">
-          {title}
-        </h2>
-        {typeof count === "number" && count > 0 ? (
-          <span className="text-xs font-medium text-mist-500">
-            {count.toLocaleString("en-US")}
-          </span>
-        ) : null}
-      </div>
-      <Link
-        href={seeAllHref}
-        className="text-sm text-royal-300 transition hover:text-royal-200"
-      >
-        {t.seeAll} →
-      </Link>
-    </div>
-  );
-}
-
 /* -------------------------------- billboard --------------------------------- */
 
 /**
  * Streams independently: the newest trailered title auto-plays muted in a
- * full-bleed billboard. Empty catalog → the original marketing hero.
+ * full-bleed billboard under the fixed transparent header. Empty catalog →
+ * the original marketing hero.
  */
 async function BillboardSection() {
   const data = await getBillboard();
@@ -105,7 +65,7 @@ async function BillboardSection() {
   if (!data) {
     return (
       <section className="relative overflow-hidden bg-gradient-to-b from-ink-900 to-ink-950">
-        <div className="container-fx animate-fade-in py-28 text-center">
+        <div className="container-fx animate-fade-in pb-28 pt-44 text-center">
           <h1 className="mx-auto max-w-2xl font-display text-3xl font-bold text-white sm:text-5xl">
             Монгол болон дэлхийн шилдэг кино нэг дор
           </h1>
@@ -134,96 +94,81 @@ async function BillboardSection() {
   return <Billboard data={data} />;
 }
 
-/* ------------------------------- latest grids ------------------------------- */
+/* ------------------------------- catalog rows ------------------------------- */
 
-const posterGridClass =
-  "grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4";
-
-/** ШИНЭ АНГИ — newest episodes grouped per series, poster grid. */
-async function LatestEpisodesSection() {
+/** ШИНЭ АНГИ — newest episodes grouped per series. */
+async function LatestEpisodesRow() {
   const [cards, counts] = await Promise.all([
-    getLatestEpisodesGrid(8),
+    getLatestEpisodesGrid(12),
     getCatalogCounts(),
   ]);
   if (cards.length === 0) return null;
   return (
-    <section className="space-y-4">
-      <SectionHeading
-        title="ШИНЭ АНГИ"
-        count={counts.episodes}
-        seeAllHref="/browse?type=series&sort=newest"
-      />
-      <div className={posterGridClass}>
-        {cards.map((c) => (
-          <PosterCard
-            key={`ep-${c.seriesSlug}`}
-            fluid
-            href={`/series/${c.seriesSlug}`}
-            title={c.title}
-            posterUrl={c.posterUrl}
-            rating={c.rating}
-            subtitle={formatShortDateMn(c.date)}
-          />
-        ))}
-      </div>
-    </section>
+    <ContentRow
+      title="ШИНЭ АНГИ"
+      count={counts.episodes}
+      seeAllHref="/browse?type=series&sort=newest"
+    >
+      {cards.map((c) => (
+        <PosterCard
+          key={`ep-${c.seriesSlug}`}
+          href={`/series/${c.seriesSlug}`}
+          title={c.title}
+          posterUrl={c.posterUrl}
+          rating={c.rating}
+          subtitle={formatShortDateMn(c.date)}
+        />
+      ))}
+    </ContentRow>
   );
 }
 
-/** ШИНЭ КИНО — newest movies with subtitle badge, poster grid. */
-async function LatestMoviesSection() {
+/** ШИНЭ КИНО — newest movies with subtitle badge. */
+async function LatestMoviesRow() {
   const [cards, counts] = await Promise.all([
     getLatestMoviesGrid(12),
     getCatalogCounts(),
   ]);
   if (cards.length === 0) return null;
   return (
-    <section className="space-y-4">
-      <SectionHeading
-        title="ШИНЭ КИНО"
-        count={counts.movies}
-        seeAllHref="/browse?type=movie&sort=newest"
-      />
-      <div className={posterGridClass}>
-        {cards.map((m) => (
-          <PosterCard
-            key={`mv-${m.id}`}
-            fluid
-            href={`/movie/${m.slug}`}
-            title={m.title}
-            posterUrl={m.posterUrl}
-            year={m.year}
-            rating={m.rating}
-            isFree={m.isFree}
-            cornerBadge={m.subtitleBadge}
-          />
-        ))}
-      </div>
-    </section>
+    <ContentRow
+      title="ШИНЭ КИНО"
+      count={counts.movies}
+      seeAllHref="/browse?type=movie&sort=newest"
+    >
+      {cards.map((m) => (
+        <PosterCard
+          key={`mv-${m.id}`}
+          href={`/movie/${m.slug}`}
+          title={m.title}
+          posterUrl={m.posterUrl}
+          year={m.year}
+          rating={m.rating}
+          isFree={m.isFree}
+          cornerBadge={m.subtitleBadge}
+        />
+      ))}
+    </ContentRow>
   );
 }
 
-/** ШИЛДЭГ КИНОНУУД — highest-rated titles, poster grid. */
-async function TopRatedSection() {
-  const cards = await getTopRatedTitles(8);
+/** ШИЛДЭГ КИНОНУУД — highest-rated titles. */
+async function TopRatedRow() {
+  const cards = await getTopRatedTitles(10);
   if (cards.length === 0) return null;
   return (
-    <section className="space-y-4">
-      <SectionHeading title="ШИЛДЭГ КИНОНУУД" seeAllHref="/browse?sort=rating" />
-      <div className={posterGridClass}>
-        {cards.map((c) => (
-          <PosterCard
-            key={`top-${c.type}-${c.slug}`}
-            fluid
-            href={`/${c.type}/${c.slug}`}
-            title={c.title}
-            posterUrl={c.posterUrl}
-            year={c.year}
-            rating={c.rating}
-          />
-        ))}
-      </div>
-    </section>
+    <ContentRow title="ШИЛДЭГ КИНОНУУД" seeAllHref="/browse?sort=rating">
+      {cards.map((c) => (
+        <PosterCard
+          key={`top-${c.type}-${c.slug}`}
+          href={`/${c.type}/${c.slug}`}
+          title={c.title}
+          posterUrl={c.posterUrl}
+          year={c.year}
+          rating={c.rating}
+        />
+      ))}
+    </ContentRow>
   );
 }
 
@@ -343,7 +288,7 @@ async function ContinueWatchingRow() {
   );
 }
 
-/* ------------------------------ catalog rows ------------------------------- */
+/* ------------------------------ CMS sections ------------------------------- */
 
 /** One CMS section — resolves its own content so each row streams on its own. */
 async function SectionRow({ section }: { section: HomepageSection }) {
@@ -414,106 +359,6 @@ async function CatalogSections() {
   );
 }
 
-/* ----------------------------- sidebar widgets ------------------------------ */
-
-function WidgetHeading({ title }: { title: string }) {
-  return (
-    <h2 className="flex items-center justify-between font-display text-base font-bold tracking-wide text-white">
-      {title}
-      <ChevronRight size={16} className="text-royal-400" aria-hidden="true" />
-    </h2>
-  );
-}
-
-/** "Он" — release-year button grid → /browse?year=YYYY. */
-async function YearsWidget() {
-  const years = (await getReleaseYears()).slice(0, 15);
-  if (years.length === 0) return null;
-  return (
-    <section className="card-surface p-4" aria-label={t.year}>
-      <WidgetHeading title={t.year} />
-      <div className="mt-4 grid grid-cols-3 gap-2">
-        {years.map((y) => (
-          <Link
-            key={y}
-            href={`/browse?year=${y}`}
-            className="rounded-md bg-ink-700 py-2 text-center text-sm text-mist-100 transition hover:bg-royal-600/30 hover:text-white"
-          >
-            {y}
-          </Link>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-/** "Төрөл" — genres with published-title counts → /browse?genre=slug. */
-async function GenresWidget() {
-  const genres = (await getGenreCounts()).slice(0, 12);
-  if (genres.length === 0) return null;
-  return (
-    <section className="card-surface p-4" aria-label={t.genre}>
-      <WidgetHeading title={t.genre} />
-      <ul className="mt-3 space-y-0.5">
-        {genres.map((g) => (
-          <li key={g.slug}>
-            <Link
-              href={`/browse?genre=${g.slug}`}
-              className="flex items-center justify-between rounded-md px-2 py-1.5 text-sm text-mist-300 transition hover:bg-ink-700/70 hover:text-white"
-            >
-              <span className="truncate">{g.name}</span>
-              <span className="ml-3 shrink-0 text-xs text-mist-500">{g.count}</span>
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-/** "Шилдэг кинонууд" — compact top-rated rows with poster thumbnails. */
-async function TopTitlesWidget() {
-  const titles = await getTopRatedTitles(8);
-  if (titles.length === 0) return null;
-  return (
-    <section className="card-surface p-4" aria-label="Шилдэг кинонууд">
-      <WidgetHeading title="Шилдэг кинонууд" />
-      <ul className="mt-3 space-y-1">
-        {titles.map((item) => (
-          <li key={`side-${item.type}-${item.slug}`}>
-            <Link
-              href={`/${item.type}/${item.slug}`}
-              className="flex items-center gap-3 rounded-md p-1.5 transition hover:bg-ink-700/70"
-            >
-              <span className="relative block h-14 w-10 shrink-0 overflow-hidden rounded bg-ink-700">
-                {item.posterUrl ? (
-                  <Image
-                    src={item.posterUrl}
-                    alt=""
-                    fill
-                    sizes="40px"
-                    className="object-cover"
-                  />
-                ) : null}
-              </span>
-              <span className="min-w-0">
-                <span className="block truncate text-sm text-mist-100">{item.title}</span>
-                <span className="mt-0.5 flex items-center gap-2 text-xs text-mist-500">
-                  {item.year ? <span>{item.year}</span> : null}
-                  <span className="inline-flex items-center gap-0.5 text-amber-300">
-                    <Star size={11} fill="currentColor" aria-hidden="true" />
-                    {item.rating.toFixed(1)}
-                  </span>
-                </span>
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
 /* ---------------------------------- page ----------------------------------- */
 
 const FAQ_ITEMS: { q: string; a: string }[] = [
@@ -551,37 +396,38 @@ const DEVICES: { icon: React.ComponentType<{ size?: number; className?: string }
 ];
 
 /**
- * Landing page shell — renders instantly. The trailer billboard spans the full
- * width; below it the body splits into the main column (grids, rows, promo,
- * FAQ, CTA) and a right sidebar (years / genres / top titles) that stacks
- * after the main content on small screens. Every data-driven piece streams
- * into its own Suspense boundary.
+ * Landing page — pure streaming-app flow: full-bleed trailer billboard under
+ * the fixed header, then full-width horizontal content rows (the first one
+ * overlapping the billboard's bottom gradient), then the marketing sections
+ * (app promo, devices, FAQ, CTA). Every data-driven piece streams into its
+ * own Suspense boundary. Genre/year discovery lives in the header "Ангилал"
+ * menu, /browse and the footer.
  */
 export default function LandingPage() {
   return (
-    <div>
+    <div className="-mt-16">
       {/* --------------------------- TRAILER BILLBOARD ---------------------- */}
       <Suspense fallback={<BillboardSkeleton />}>
         <BillboardSection />
       </Suspense>
 
-      {/* ---------------------- MAIN COLUMN + RIGHT SIDEBAR ----------------- */}
-      <div className="container-fx py-12 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-10">
-        <div className="min-w-0 space-y-12">
-          <Suspense fallback={<GridSkeleton count={8} />}>
-            <LatestEpisodesSection />
-          </Suspense>
-
-          <Suspense fallback={<GridSkeleton count={12} />}>
-            <LatestMoviesSection />
-          </Suspense>
-
-          <Suspense fallback={<GridSkeleton count={8} />}>
-            <TopRatedSection />
+      {/* ----------------------------- CONTENT ROWS ------------------------- */}
+      <div className="relative z-10 -mt-10 sm:-mt-20">
+        <div className="container-fx space-y-10 pb-16">
+          <Suspense fallback={<RowSkeleton />}>
+            <ContinueWatchingRow />
           </Suspense>
 
           <Suspense fallback={<RowSkeleton />}>
-            <ContinueWatchingRow />
+            <LatestEpisodesRow />
+          </Suspense>
+
+          <Suspense fallback={<RowSkeleton />}>
+            <LatestMoviesRow />
+          </Suspense>
+
+          <Suspense fallback={<RowSkeleton />}>
+            <TopRatedRow />
           </Suspense>
 
           <Suspense
@@ -594,133 +440,123 @@ export default function LandingPage() {
           >
             <CatalogSections />
           </Suspense>
+        </div>
+      </div>
 
-          {/* --------------------------- APP PROMO -------------------------- */}
-          <section className="overflow-hidden rounded-2xl border border-ink-600/40 bg-ink-900">
-            <div className="grid items-center gap-12 px-6 py-14 sm:px-10 md:grid-cols-2">
-              <div>
-                <h2 className="font-display text-2xl font-bold text-white sm:text-3xl">
-                  FLIMIX хаана ч, хэзээ ч
-                </h2>
-                <p className="mt-4 max-w-md leading-relaxed text-mist-300">
-                  Гар утасны аппликэйшн дээр татаж авах, оффлайн үзэх, үргэлжлүүлэн
-                  үзэх боломжууд бүгд нэг дор. Аппликэйшн тун удахгүй.
-                </p>
-                <div className="mt-7 flex flex-wrap gap-3">
-                  <span className="inline-flex flex-col rounded-xl border border-ink-600 bg-ink-800 px-5 py-2.5">
-                    <span className="text-[10px] uppercase tracking-widest text-mist-500">
-                      {t.comingSoon}
-                    </span>
-                    <span className="text-sm font-semibold text-mist-100">App Store</span>
+      {/* --------------------------- MARKETING SECTIONS --------------------- */}
+      <div className="container-fx space-y-16 pb-8">
+        {/* --------------------------- APP PROMO ---------------------------- */}
+        <section className="overflow-hidden rounded-2xl border border-ink-600/40 bg-ink-900">
+          <div className="grid items-center gap-12 px-6 py-14 sm:px-10 md:grid-cols-2">
+            <div>
+              <h2 className="font-display text-2xl font-bold text-white sm:text-3xl">
+                FLIMIX хаана ч, хэзээ ч
+              </h2>
+              <p className="mt-4 max-w-md leading-relaxed text-mist-300">
+                Гар утасны аппликэйшн дээр татаж авах, оффлайн үзэх, үргэлжлүүлэн
+                үзэх боломжууд бүгд нэг дор. Аппликэйшн тун удахгүй.
+              </p>
+              <div className="mt-7 flex flex-wrap gap-3">
+                <span className="inline-flex flex-col rounded-xl border border-ink-600 bg-ink-800 px-5 py-2.5">
+                  <span className="text-[10px] uppercase tracking-widest text-mist-500">
+                    {t.comingSoon}
                   </span>
-                  <span className="inline-flex flex-col rounded-xl border border-ink-600 bg-ink-800 px-5 py-2.5">
-                    <span className="text-[10px] uppercase tracking-widest text-mist-500">
-                      {t.comingSoon}
-                    </span>
-                    <span className="text-sm font-semibold text-mist-100">Google Play</span>
+                  <span className="text-sm font-semibold text-mist-100">App Store</span>
+                </span>
+                <span className="inline-flex flex-col rounded-xl border border-ink-600 bg-ink-800 px-5 py-2.5">
+                  <span className="text-[10px] uppercase tracking-widest text-mist-500">
+                    {t.comingSoon}
                   </span>
-                </div>
+                  <span className="text-sm font-semibold text-mist-100">Google Play</span>
+                </span>
               </div>
+            </div>
 
-              {/* CSS phone mockup */}
-              <div className="flex justify-center" aria-hidden="true">
-                <div className="relative h-[420px] w-[210px] rounded-[2.4rem] border border-ink-600 bg-ink-800 p-2 shadow-card">
-                  <div className="absolute left-1/2 top-2 z-10 h-5 w-24 -translate-x-1/2 rounded-b-2xl bg-ink-950" />
-                  <div className="flex h-full w-full flex-col overflow-hidden rounded-[1.9rem] bg-gradient-to-b from-royal-700/30 via-ink-900 to-ink-950 p-4 pt-10">
-                    <span className="font-display text-sm font-bold tracking-wide text-white">
-                      FLIMIX
-                    </span>
-                    <div className="mt-3 h-20 rounded-lg bg-gradient-to-br from-royal-600/50 to-ink-700" />
-                    <div className="mt-3 h-2 w-24 rounded bg-ink-700" />
-                    <div className="mt-3 grid grid-cols-3 gap-2">
-                      {Array.from({ length: 6 }).map((_, i) => (
-                        <div key={i} className="aspect-[2/3] rounded-md bg-ink-700/80" />
-                      ))}
-                    </div>
-                    <div className="mt-auto flex justify-around border-t border-ink-700 pt-3">
-                      <div className="h-2 w-8 rounded bg-royal-500/70" />
-                      <div className="h-2 w-8 rounded bg-ink-700" />
-                      <div className="h-2 w-8 rounded bg-ink-700" />
-                    </div>
+            {/* CSS phone mockup */}
+            <div className="flex justify-center" aria-hidden="true">
+              <div className="relative h-[420px] w-[210px] rounded-[2.4rem] border border-ink-600 bg-ink-800 p-2 shadow-card">
+                <div className="absolute left-1/2 top-2 z-10 h-5 w-24 -translate-x-1/2 rounded-b-2xl bg-ink-950" />
+                <div className="flex h-full w-full flex-col overflow-hidden rounded-[1.9rem] bg-gradient-to-b from-royal-700/30 via-ink-900 to-ink-950 p-4 pt-10">
+                  <span className="font-display text-sm font-bold tracking-wide text-white">
+                    FLIMIX
+                  </span>
+                  <div className="mt-3 h-20 rounded-lg bg-gradient-to-br from-royal-600/50 to-ink-700" />
+                  <div className="mt-3 h-2 w-24 rounded bg-ink-700" />
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <div key={i} className="aspect-[2/3] rounded-md bg-ink-700/80" />
+                    ))}
+                  </div>
+                  <div className="mt-auto flex justify-around border-t border-ink-700 pt-3">
+                    <div className="h-2 w-8 rounded bg-royal-500/70" />
+                    <div className="h-2 w-8 rounded bg-ink-700" />
+                    <div className="h-2 w-8 rounded bg-ink-700" />
                   </div>
                 </div>
               </div>
             </div>
-          </section>
+          </div>
+        </section>
 
-          {/* ----------------------------- DEVICES -------------------------- */}
-          <section>
+        {/* ----------------------------- DEVICES ---------------------------- */}
+        <section>
+          <h2 className="text-center font-display text-2xl font-bold text-white sm:text-3xl">
+            Дуртай төхөөрөмж дээрээ үзээрэй
+          </h2>
+          <div className="mt-10 grid grid-cols-2 gap-4 xl:grid-cols-4">
+            {DEVICES.map((d) => (
+              <div
+                key={d.label}
+                className="card-surface flex flex-col items-center gap-3 px-4 py-8 text-center"
+              >
+                <d.icon size={32} className="text-royal-400" aria-hidden="true" />
+                <p className="font-medium text-white">{d.label}</p>
+                <p className="text-xs text-mist-400">{d.desc}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ------------------------------- FAQ ------------------------------ */}
+        <div id="zaavar" className="scroll-mt-20">
+          <section id="faq" className="mx-auto max-w-3xl scroll-mt-20">
             <h2 className="text-center font-display text-2xl font-bold text-white sm:text-3xl">
-              Дуртай төхөөрөмж дээрээ үзээрэй
+              {t.faq}
             </h2>
-            <div className="mt-10 grid grid-cols-2 gap-4 xl:grid-cols-4">
-              {DEVICES.map((d) => (
-                <div
-                  key={d.label}
-                  className="card-surface flex flex-col items-center gap-3 px-4 py-8 text-center"
-                >
-                  <d.icon size={32} className="text-royal-400" aria-hidden="true" />
-                  <p className="font-medium text-white">{d.label}</p>
-                  <p className="text-xs text-mist-400">{d.desc}</p>
-                </div>
+            <div className="mt-10 space-y-3">
+              {FAQ_ITEMS.map((item) => (
+                <details key={item.q} className="card-surface group px-5 py-4">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-medium text-mist-100 [&::-webkit-details-marker]:hidden">
+                    {item.q}
+                    <span
+                      className="text-royal-400 transition group-open:rotate-45"
+                      aria-hidden="true"
+                    >
+                      +
+                    </span>
+                  </summary>
+                  <p className="mt-3 text-sm leading-relaxed text-mist-300">{item.a}</p>
+                </details>
               ))}
             </div>
           </section>
-
-          {/* ------------------------------- FAQ ----------------------------- */}
-          <div id="zaavar" className="scroll-mt-20">
-            <section id="faq" className="mx-auto max-w-3xl scroll-mt-20">
-              <h2 className="text-center font-display text-2xl font-bold text-white sm:text-3xl">
-                {t.faq}
-              </h2>
-              <div className="mt-10 space-y-3">
-                {FAQ_ITEMS.map((item) => (
-                  <details key={item.q} className="card-surface group px-5 py-4">
-                    <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-medium text-mist-100 [&::-webkit-details-marker]:hidden">
-                      {item.q}
-                      <span
-                        className="text-royal-400 transition group-open:rotate-45"
-                        aria-hidden="true"
-                      >
-                        +
-                      </span>
-                    </summary>
-                    <p className="mt-3 text-sm leading-relaxed text-mist-300">{item.a}</p>
-                  </details>
-                ))}
-              </div>
-            </section>
-          </div>
-
-          {/* ----------------------------- CTA BAND -------------------------- */}
-          <section className="relative overflow-hidden rounded-2xl border border-royal-600/30 bg-gradient-to-r from-royal-700/25 via-ink-800 to-ink-900 px-6 py-14 text-center sm:px-12">
-            <h2 className="font-display text-2xl font-bold text-white sm:text-3xl">
-              Өнөөдөр эхлээрэй
-            </h2>
-            <p className="mx-auto mt-3 max-w-md text-mist-300">
-              Сарын багц {formatMnt(14900)}{t.perMonth} — хүссэн үедээ цуцална.
-            </p>
-            <Link
-              href="/subscribe"
-              className="mt-7 inline-flex items-center justify-center rounded-lg bg-brand-gradient px-8 py-3.5 text-base font-medium text-white shadow-accent transition hover:brightness-110"
-            >
-              {t.choosePlan}
-            </Link>
-          </section>
         </div>
 
-        {/* ----------------------------- SIDEBAR ----------------------------- */}
-        <aside className="mt-12 space-y-6 lg:mt-0" aria-label="Хажуугийн жагсаалт">
-          <Suspense fallback={<SidebarWidgetSkeleton rows={5} />}>
-            <YearsWidget />
-          </Suspense>
-          <Suspense fallback={<SidebarWidgetSkeleton rows={8} />}>
-            <GenresWidget />
-          </Suspense>
-          <Suspense fallback={<SidebarWidgetSkeleton rows={8} />}>
-            <TopTitlesWidget />
-          </Suspense>
-        </aside>
+        {/* ----------------------------- CTA BAND --------------------------- */}
+        <section className="relative overflow-hidden rounded-2xl border border-royal-600/30 bg-gradient-to-r from-royal-700/25 via-ink-800 to-ink-900 px-6 py-14 text-center sm:px-12">
+          <h2 className="font-display text-2xl font-bold text-white sm:text-3xl">
+            Өнөөдөр эхлээрэй
+          </h2>
+          <p className="mx-auto mt-3 max-w-md text-mist-300">
+            Сарын багц {formatMnt(14900)}{t.perMonth} — хүссэн үедээ цуцална.
+          </p>
+          <Link
+            href="/subscribe"
+            className="mt-7 inline-flex items-center justify-center rounded-lg bg-brand-gradient px-8 py-3.5 text-base font-medium text-white shadow-accent transition hover:brightness-110"
+          >
+            {t.choosePlan}
+          </Link>
+        </section>
       </div>
     </div>
   );

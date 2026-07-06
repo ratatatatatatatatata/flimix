@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { RegisterSW } from "@/components/pwa/RegisterSW";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -8,6 +9,13 @@ export const metadata: Metadata = {
   },
   description:
     "FLIMIX — Монгол болон дэлхийн шилдэг кино, цувралуудыг нэг дороос. Хадмал орчуулгатай, өндөр чанартай стриминг.",
+  applicationName: "FLIMIX",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "FLIMIX",
+  },
 };
 
 export const viewport: Viewport = {
@@ -21,7 +29,10 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="mn">
-      <body>{children}</body>
+      <body>
+        {children}
+        <RegisterSW />
+      </body>
     </html>
   );
 }
