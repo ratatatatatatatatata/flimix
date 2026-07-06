@@ -1,26 +1,34 @@
 import { Suspense } from "react";
-import Image from "next/image";
 import Link from "next/link";
-import { Monitor, Play, Smartphone, Tablet, Tv } from "lucide-react";
+import { Monitor, Smartphone, Tablet, Tv } from "lucide-react";
 import { ContentRow } from "@/components/catalog/ContentRow";
 import { PosterCard } from "@/components/catalog/PosterCard";
-import { Badge } from "@/components/ui/Badge";
-import { HeroSkeleton, RowSkeleton } from "@/components/ui/Skeletons";
+import {
+  CarouselSkeleton,
+  GridSkeleton,
+  RowSkeleton,
+} from "@/components/ui/Skeletons";
 import { getSession } from "@/lib/auth";
+import { DECADES } from "@/lib/browse";
 import {
   AUTO_SEE_ALL,
   getAutoSectionContent,
-  getHeroTitle,
+  getCatalogCounts,
+  getFeaturedCarousel,
+  getGenreCounts,
   getLandingFallbackRows,
+  getLatestEpisodesGrid,
+  getLatestMoviesGrid,
   getPublishedSections,
-  heroFromSection,
+  getReleaseYears,
   manualSectionItems,
   parseAutoSource,
   type CatalogCard,
 } from "@/lib/catalog";
-import { formatMnt, t } from "@/lib/i18n";
+import { formatMnt, formatShortDateMn, t } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 import type { HomepageSection, Movie, WatchProgress } from "@/types/db";
+import { FeaturedCarousel } from "./FeaturedCarousel";
 
 type Db = Awaited<ReturnType<typeof createClient>>;
 
@@ -50,22 +58,46 @@ async function getVisibleSections(): Promise<HomepageSection[]> {
   });
 }
 
-function excerpt(text: string | null, max = 220): string | null {
-  if (!text) return null;
-  if (text.length <= max) return text;
-  return `${text.slice(0, max).trimEnd()}…`;
+/* ------------------------------ section heading ----------------------------- */
+
+function SectionHeading({
+  title,
+  count,
+  seeAllHref,
+}: {
+  title: string;
+  count?: number;
+  seeAllHref: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-2">
+      <div className="flex items-baseline gap-3">
+        <h2 className="font-display text-lg font-bold tracking-wide text-white sm:text-xl">
+          {title}
+        </h2>
+        {typeof count === "number" && count > 0 ? (
+          <span className="text-xs font-medium text-mist-500">
+            {count.toLocaleString("en-US")}
+          </span>
+        ) : null}
+      </div>
+      <Link
+        href={seeAllHref}
+        className="text-sm text-royal-300 transition hover:text-royal-200"
+      >
+        {t.seeAll} →
+      </Link>
+    </div>
+  );
 }
 
-/* ----------------------------------- hero ---------------------------------- */
+/* ------------------------------ featured carousel --------------------------- */
 
-/** Streams independently: CMS hero section first, cached fallback otherwise. */
-async function HeroSection() {
-  const sections = await getVisibleSections();
-  const heroCms = sections.find((s) => s.layout === "hero");
-  const hero = heroFromSection(heroCms) ?? (await getHeroTitle());
-  const heroDescription = hero ? excerpt(hero.description) : null;
+/** Streams independently: newest backdropped titles → snap carousel. */
+async function FeaturedSection() {
+  const items = await getFeaturedCarousel(8);
 
-  if (!hero) {
+  if (items.length === 0) {
     return (
       <section className="relative overflow-hidden bg-gradient-to-b from-ink-900 to-ink-950">
         <div className="container-fx animate-fade-in py-28 text-center">
@@ -94,59 +126,70 @@ async function HeroSection() {
     );
   }
 
+  return <FeaturedCarousel items={items} />;
+}
+
+/* ------------------------------- latest grids ------------------------------- */
+
+/** ШИНЭ АНГИ — newest episodes grouped per series, poster grid. */
+async function LatestEpisodesSection() {
+  const [cards, counts] = await Promise.all([
+    getLatestEpisodesGrid(10),
+    getCatalogCounts(),
+  ]);
+  if (cards.length === 0) return null;
   return (
-    <section className="relative flex min-h-[72vh] items-end overflow-hidden">
-      {hero.backdropUrl ? (
-        <Image
-          src={hero.backdropUrl}
-          alt=""
-          fill
-          priority
-          sizes="100vw"
-          className="object-cover"
-        />
-      ) : (
-        <div className="absolute inset-0 bg-gradient-to-br from-royal-700/25 via-ink-900 to-ink-950" />
-      )}
-      <div className="absolute inset-0 bg-hero-fade" aria-hidden="true" />
-      <div className="container-fx relative z-10 animate-fade-in pb-14 pt-44">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.25em] text-royal-300">
-          FLIMIX онцолж байна
-        </p>
-        <h1 className="max-w-2xl font-display text-3xl font-bold leading-tight text-white sm:text-5xl">
-          {hero.title}
-        </h1>
-        {hero.originalTitle && hero.originalTitle !== hero.title ? (
-          <p className="mt-2 text-sm text-mist-400">{hero.originalTitle}</p>
-        ) : null}
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          {hero.year ? <Badge>{hero.year}</Badge> : null}
-          {hero.ageRating ? <Badge tone="accent">{hero.ageRating}</Badge> : null}
-          {hero.genres.map((g) => (
-            <Badge key={g}>{g}</Badge>
-          ))}
-          {hero.isFree ? <Badge tone="success">Үнэгүй</Badge> : null}
-        </div>
-        {heroDescription ? (
-          <p className="mt-4 max-w-xl text-sm leading-relaxed text-mist-300 sm:text-base">
-            {heroDescription}
-          </p>
-        ) : null}
-        <div className="mt-7 flex flex-wrap gap-3">
-          <Link
-            href={hero.href}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-gradient px-7 py-3.5 text-base font-medium text-white shadow-accent transition hover:brightness-110"
-          >
-            <Play size={18} aria-hidden="true" />
-            {t.watchNow}
-          </Link>
-          <Link
-            href={`${hero.href}#trailer`}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-ink-600 bg-ink-700/70 px-7 py-3.5 text-base font-medium text-mist-100 backdrop-blur transition hover:border-royal-500/60"
-          >
-            {t.watchTrailer}
-          </Link>
-        </div>
+    <section className="space-y-4">
+      <SectionHeading
+        title="ШИНЭ АНГИ"
+        count={counts.episodes}
+        seeAllHref="/browse?type=series&sort=newest"
+      />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5">
+        {cards.map((c) => (
+          <PosterCard
+            key={`ep-${c.seriesSlug}`}
+            fluid
+            href={`/series/${c.seriesSlug}`}
+            title={c.title}
+            posterUrl={c.posterUrl}
+            rating={c.rating}
+            subtitle={formatShortDateMn(c.date)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** ШИНЭ КИНО — newest movies with subtitle badge, poster grid. */
+async function LatestMoviesSection() {
+  const [cards, counts] = await Promise.all([
+    getLatestMoviesGrid(12),
+    getCatalogCounts(),
+  ]);
+  if (cards.length === 0) return null;
+  return (
+    <section className="space-y-4">
+      <SectionHeading
+        title="ШИНЭ КИНО"
+        count={counts.movies}
+        seeAllHref="/browse?type=movie&sort=newest"
+      />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5">
+        {cards.map((m) => (
+          <PosterCard
+            key={`mv-${m.id}`}
+            fluid
+            href={`/movie/${m.slug}`}
+            title={m.title}
+            posterUrl={m.posterUrl}
+            year={m.year}
+            rating={m.rating}
+            isFree={m.isFree}
+            cornerBadge={m.subtitleBadge}
+          />
+        ))}
       </div>
     </section>
   );
@@ -339,6 +382,77 @@ async function CatalogSections() {
   );
 }
 
+/* ------------------------------ genres & years ------------------------------ */
+
+/** Only the decades /browse actually filters by (see src/lib/browse.ts). */
+const DECADE_LABELS: Record<number, string> = {
+  2020: "2020-иод он",
+  2010: "2010-аад он",
+  2000: "2000-аад он",
+  1990: "1990-ээд он",
+  1980: "1980-аад он",
+};
+
+const chipClass =
+  "inline-flex items-center gap-1.5 rounded-full border border-ink-600 bg-ink-800 px-3.5 py-1.5 text-sm text-mist-100 transition hover:border-royal-500/60 hover:text-white";
+
+/** Төрөл ба он — genre chip cloud + decade chips, both linking into /browse. */
+async function GenresYearsSection() {
+  const [genres, years] = await Promise.all([getGenreCounts(), getReleaseYears()]);
+  const decades = DECADES.filter((d) => years.some((y) => y >= d && y <= d + 9));
+  if (genres.length === 0 && decades.length === 0) return null;
+  return (
+    <section className="border-y border-ink-600/40 bg-ink-900/60">
+      <div className="container-fx grid gap-10 py-14 md:grid-cols-2">
+        {genres.length > 0 ? (
+          <div>
+            <h2 className="font-display text-xl font-bold text-white">{t.genre}</h2>
+            <div className="mt-5 flex flex-wrap gap-2">
+              {genres.map((g) => (
+                <Link key={g.slug} href={`/browse?genre=${g.slug}`} className={chipClass}>
+                  {g.name}
+                  <span className="text-xs text-mist-500">{g.count}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {decades.length > 0 ? (
+          <div>
+            <h2 className="font-display text-xl font-bold text-white">{t.year}</h2>
+            <div className="mt-5 flex flex-wrap gap-2">
+              {decades.map((d) => (
+                <Link key={d} href={`/browse?decade=${d}`} className={chipClass}>
+                  {DECADE_LABELS[d] ?? `${d}`}
+                </Link>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function GenresYearsSkeleton() {
+  return (
+    <section className="border-y border-ink-600/40 bg-ink-900/60" aria-hidden="true">
+      <div className="container-fx grid gap-10 py-14 md:grid-cols-2">
+        {Array.from({ length: 2 }).map((_, col) => (
+          <div key={col} className="space-y-5">
+            <div className="skeleton h-6 w-24" />
+            <div className="flex flex-wrap gap-2">
+              {Array.from({ length: col === 0 ? 10 : 5 }).map((_, i) => (
+                <div key={i} className="skeleton h-9 w-24 rounded-full" />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 /* ---------------------------------- page ----------------------------------- */
 
 const FAQ_ITEMS: { q: string; a: string }[] = [
@@ -376,20 +490,29 @@ const DEVICES: { icon: React.ComponentType<{ size?: number; className?: string }
 ];
 
 /**
- * Landing page shell — renders instantly. Every data-driven section (hero,
- * continue-watching, each CMS row) streams into its own Suspense boundary;
- * static marketing sections need no data and paint immediately.
+ * Landing page shell — renders instantly. Every data-driven section (featured
+ * carousel, latest grids, continue-watching, each CMS row, genres/years)
+ * streams into its own Suspense boundary; static marketing sections need no
+ * data and paint immediately.
  */
 export default function LandingPage() {
   return (
     <div>
-      {/* ------------------------------- HERO ------------------------------- */}
-      <Suspense fallback={<HeroSkeleton />}>
-        <HeroSection />
+      {/* -------------------------- FEATURED CAROUSEL ----------------------- */}
+      <Suspense fallback={<CarouselSkeleton />}>
+        <FeaturedSection />
       </Suspense>
 
-      {/* --------------------------- CONTENT ROWS --------------------------- */}
+      {/* --------------------- LATEST GRIDS + CONTENT ROWS ------------------ */}
       <div className="container-fx space-y-12 py-12">
+        <Suspense fallback={<GridSkeleton count={10} />}>
+          <LatestEpisodesSection />
+        </Suspense>
+
+        <Suspense fallback={<GridSkeleton count={12} />}>
+          <LatestMoviesSection />
+        </Suspense>
+
         <Suspense fallback={<RowSkeleton />}>
           <ContinueWatchingRow />
         </Suspense>
@@ -478,28 +601,35 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* --------------------------- GENRES & YEARS ------------------------- */}
+      <Suspense fallback={<GenresYearsSkeleton />}>
+        <GenresYearsSection />
+      </Suspense>
+
       {/* ------------------------------- FAQ -------------------------------- */}
-      <section id="faq" className="container-fx max-w-3xl py-16">
-        <h2 className="text-center font-display text-2xl font-bold text-white sm:text-3xl">
-          {t.faq}
-        </h2>
-        <div className="mt-10 space-y-3">
-          {FAQ_ITEMS.map((item) => (
-            <details key={item.q} className="card-surface group px-5 py-4">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-medium text-mist-100 [&::-webkit-details-marker]:hidden">
-                {item.q}
-                <span
-                  className="text-royal-400 transition group-open:rotate-45"
-                  aria-hidden="true"
-                >
-                  +
-                </span>
-              </summary>
-              <p className="mt-3 text-sm leading-relaxed text-mist-300">{item.a}</p>
-            </details>
-          ))}
-        </div>
-      </section>
+      <div id="zaavar" className="scroll-mt-20">
+        <section id="faq" className="container-fx max-w-3xl scroll-mt-20 py-16">
+          <h2 className="text-center font-display text-2xl font-bold text-white sm:text-3xl">
+            {t.faq}
+          </h2>
+          <div className="mt-10 space-y-3">
+            {FAQ_ITEMS.map((item) => (
+              <details key={item.q} className="card-surface group px-5 py-4">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-medium text-mist-100 [&::-webkit-details-marker]:hidden">
+                  {item.q}
+                  <span
+                    className="text-royal-400 transition group-open:rotate-45"
+                    aria-hidden="true"
+                  >
+                    +
+                  </span>
+                </summary>
+                <p className="mt-3 text-sm leading-relaxed text-mist-300">{item.a}</p>
+              </details>
+            ))}
+          </div>
+        </section>
+      </div>
 
       {/* ----------------------------- CTA BAND ------------------------------ */}
       <section className="container-fx pb-4 pt-8">

@@ -24,6 +24,8 @@ export function SiteFooter() {
         <div>
           <h3 className="mb-3 text-sm font-semibold text-white">Цэс</h3>
           <ul className="space-y-2 text-sm text-mist-400">
+            <li><Link className="hover:text-white" href="/browse?type=movie">{t.movies}</Link></li>
+            <li><Link className="hover:text-white" href="/browse?type=series">{t.multiPart}</Link></li>
             <li><Link className="hover:text-white" href="/browse">{t.categories}</Link></li>
             <li><Link className="hover:text-white" href="/search">{t.search}</Link></li>
             <li><Link className="hover:text-white" href="/subscribe">{t.choosePlan}</Link></li>

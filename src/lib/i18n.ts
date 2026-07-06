@@ -7,6 +7,7 @@ export const t = {
   home: "Нүүр",
   movies: "Кино",
   series: "Цуврал",
+  multiPart: "Олон ангит",
   categories: "Ангилал",
   search: "Хайлт",
   myList: "Миний жагсаалт",
@@ -132,4 +133,11 @@ export function formatDuration(seconds: number): string {
 /** Format tugrik amounts: 14900 -> "14,900₮" */
 export function formatMnt(amount: number): string {
   return `${amount.toLocaleString("en-US")}₮`;
+}
+
+/** Short Mongolian date: "2026-07-04" → "7-р сарын 4" */
+export function formatShortDateMn(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getMonth() + 1}-р сарын ${d.getDate()}`;
 }

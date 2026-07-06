@@ -45,3 +45,41 @@ export function HeroSkeleton() {
     </section>
   );
 }
+
+/** Grid-shaped skeleton matching the landing poster grids (2/3/4/5 columns). */
+export function GridSkeleton({ count = 10 }: { count?: number }) {
+  return (
+    <div className="space-y-4" aria-hidden="true">
+      <div className="flex items-center justify-between">
+        <div className="skeleton h-6 w-44" />
+        <div className="skeleton h-4 w-24" />
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5">
+        {Array.from({ length: count }).map((_, i) => (
+          <div key={i} className="space-y-2">
+            <div className="skeleton aspect-[2/3] w-full" />
+            <div className="skeleton h-4 w-3/4" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Wide-card skeleton for the featured landing carousel. */
+export function CarouselSkeleton() {
+  return (
+    <section className="overflow-hidden pt-6 sm:pt-10" aria-hidden="true">
+      <div className="flex justify-center gap-4 px-4">
+        <div className="skeleton hidden aspect-video w-[70vw] max-w-3xl shrink-0 rounded-xl md:block" />
+        <div className="skeleton aspect-video w-[70vw] max-w-3xl shrink-0 rounded-xl" />
+        <div className="skeleton hidden aspect-video w-[70vw] max-w-3xl shrink-0 rounded-xl md:block" />
+      </div>
+      <div className="mt-4 flex justify-center gap-2">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="skeleton h-1.5 w-4 rounded-full" />
+        ))}
+      </div>
+    </section>
+  );
+}

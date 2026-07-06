@@ -608,3 +608,302 @@ export const getSimilarSeries = unstable_cache(
   ["catalog-similar-series"],
   CACHE_OPTS,
 );
+
+/* --------------------------- landing top sections --------------------------- */
+
+export interface FeaturedItem {
+  id: string;
+  slug: string;
+  type: "movie" | "series";
+  title: string;
+  backdropUrl: string;
+  posterUrl: string | null;
+  year: number | null;
+  rating: number | null;
+  /** First two genre names (Mongolian). */
+  genres: string[];
+}
+
+/** Newest published movies + series with a backdrop, mixed, for the carousel. */
+export const getFeaturedCarousel = unstable_cache(
+  async (limit: number = 8): Promise<FeaturedItem[]> => {
+    const db = createPublicClient();
+    const [moviesRes, seriesRes] = await Promise.all([
+      db
+        .from("movies")
+        .select("*, genres(*)")
+        .eq("status", "published")
+        .is("deleted_at", null)
+        .not("backdrop_url", "is", null)
+        .order("published_at", { ascending: false, nullsFirst: false })
+        .limit(limit),
+      db
+        .from("series")
+        .select("*, genres(*)")
+        .eq("status", "published")
+        .is("deleted_at", null)
+        .not("backdrop_url", "is", null)
+        .order("published_at", { ascending: false, nullsFirst: false })
+        .limit(limit),
+    ]);
+    const movies = (moviesRes.data ?? []) as unknown as Movie[];
+    const seriesRows = (seriesRes.data ?? []) as unknown as Series[];
+
+    const merged: { publishedAt: number; item: FeaturedItem }[] = [];
+    for (const m of movies) {
+      if (!m.backdrop_url) continue;
+      merged.push({
+        publishedAt: Date.parse(m.published_at ?? m.created_at) || 0,
+        item: {
+          id: m.id,
+          slug: m.slug,
+          type: "movie",
+          title: m.title_mn,
+          backdropUrl: m.backdrop_url,
+          posterUrl: m.poster_url,
+          year: m.release_year,
+          rating: m.rating,
+          genres: (m.genres ?? []).map((g) => g.name_mn).slice(0, 2),
+        },
+      });
+    }
+    for (const s of seriesRows) {
+      if (!s.backdrop_url) continue;
+      merged.push({
+        publishedAt: Date.parse(s.published_at ?? s.created_at) || 0,
+        item: {
+          id: s.id,
+          slug: s.slug,
+          type: "series",
+          title: s.title_mn,
+          backdropUrl: s.backdrop_url,
+          posterUrl: s.poster_url,
+          year: s.release_year,
+          rating: s.rating,
+          genres: (s.genres ?? []).map((g) => g.name_mn).slice(0, 2),
+        },
+      });
+    }
+    merged.sort((a, b) => b.publishedAt - a.publishedAt);
+    return merged.slice(0, limit).map((e) => e.item);
+  },
+  ["catalog-featured-carousel"],
+  CACHE_OPTS,
+);
+
+export interface LatestEpisodeCard {
+  seriesSlug: string;
+  /** Series title + " S{season} A{episode}" of its newest episode. */
+  title: string;
+  posterUrl: string | null;
+  rating: number | null;
+  /** ISO date of the newest episode (published_at, else created_at). */
+  date: string;
+}
+
+interface LatestEpisodeJoinRow {
+  id: string;
+  episode_number: number;
+  poster_url: string | null;
+  published_at: string | null;
+  created_at: string;
+  season: {
+    season_number: number;
+    series: {
+      id: string;
+      slug: string;
+      title_mn: string;
+      poster_url: string | null;
+      rating: number | null;
+      status: string;
+      deleted_at: string | null;
+    } | null;
+  } | null;
+}
+
+/** Newest published episodes → one card per series (deduped, newest first). */
+export const getLatestEpisodesGrid = unstable_cache(
+  async (limit: number = 10): Promise<LatestEpisodeCard[]> => {
+    const db = createPublicClient();
+    const { data } = await db
+      .from("episodes")
+      .select(
+        "id, episode_number, poster_url, published_at, created_at, season:seasons(season_number, series:series(id, slug, title_mn, poster_url, rating, status, deleted_at))",
+      )
+      .eq("status", "published")
+      .order("published_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .limit(limit * 5);
+    const rows = (data ?? []) as unknown as LatestEpisodeJoinRow[];
+
+    const seen = new Set<string>();
+    const cards: LatestEpisodeCard[] = [];
+    for (const row of rows) {
+      const series = row.season?.series;
+      if (!row.season || !series) continue;
+      if (series.status !== "published" || series.deleted_at) continue;
+      if (seen.has(series.id)) continue;
+      seen.add(series.id);
+      cards.push({
+        seriesSlug: series.slug,
+        title: `${series.title_mn} S${row.season.season_number} A${row.episode_number}`,
+        posterUrl: series.poster_url,
+        rating: series.rating,
+        date: row.published_at ?? row.created_at,
+      });
+      if (cards.length >= limit) break;
+    }
+    return cards;
+  },
+  ["catalog-latest-episodes-grid"],
+  CACHE_OPTS,
+);
+
+export interface LatestMovieCard {
+  id: string;
+  slug: string;
+  title: string;
+  posterUrl: string | null;
+  year: number | null;
+  rating: number | null;
+  isFree: boolean;
+  /** "ХАДМАЛ" when the movie has at least one subtitle track, else null. */
+  subtitleBadge: string | null;
+}
+
+/** Newest published movies with a subtitle badge for the landing grid. */
+export const getLatestMoviesGrid = unstable_cache(
+  async (limit: number = 12): Promise<LatestMovieCard[]> => {
+    const db = createPublicClient();
+    const movies = await fetchMovies(db, { sort: "newest", limit });
+    if (movies.length === 0) return [];
+    const { data: subs } = await db
+      .from("subtitle_tracks")
+      .select("content_id")
+      .eq("content_type", "movie")
+      .in(
+        "content_id",
+        movies.map((m) => m.id),
+      );
+    const withSubs = new Set(
+      ((subs ?? []) as { content_id: string }[]).map((s) => s.content_id),
+    );
+    return movies.map((m) => ({
+      id: m.id,
+      slug: m.slug,
+      title: m.title_mn,
+      posterUrl: m.poster_url,
+      year: m.release_year,
+      rating: m.rating,
+      isFree: m.is_free,
+      subtitleBadge: withSubs.has(m.id) ? "ХАДМАЛ" : null,
+    }));
+  },
+  ["catalog-latest-movies-grid"],
+  CACHE_OPTS,
+);
+
+export interface CatalogCounts {
+  movies: number;
+  episodes: number;
+}
+
+/** Published movie and episode totals for the landing section headings. */
+export const getCatalogCounts = unstable_cache(
+  async (): Promise<CatalogCounts> => {
+    const db = createPublicClient();
+    const [moviesRes, episodesRes] = await Promise.all([
+      db
+        .from("movies")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "published")
+        .is("deleted_at", null),
+      db
+        .from("episodes")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "published"),
+    ]);
+    return { movies: moviesRes.count ?? 0, episodes: episodesRes.count ?? 0 };
+  },
+  ["catalog-counts"],
+  CACHE_OPTS,
+);
+
+export interface GenreCount {
+  slug: string;
+  name: string;
+  /** Published movie + series titles in this genre. */
+  count: number;
+}
+
+/** Genres with published movie+series counts (count desc, zero counts dropped). */
+export const getGenreCounts = unstable_cache(
+  async (): Promise<GenreCount[]> => {
+    const db = createPublicClient();
+    const [genresRes, movieGenresRes, seriesGenresRes] = await Promise.all([
+      db.from("genres").select("*").order("name_mn"),
+      db
+        .from("movie_genres")
+        .select("genre_id, movies!inner(id)")
+        .eq("movies.status", "published")
+        .is("movies.deleted_at", null)
+        .limit(5000),
+      db
+        .from("series_genres")
+        .select("genre_id, series!inner(id)")
+        .eq("series.status", "published")
+        .is("series.deleted_at", null)
+        .limit(5000),
+    ]);
+    const genres = (genresRes.data ?? []) as unknown as Genre[];
+    const counts = new Map<string, number>();
+    const junctionRows = [
+      ...((movieGenresRes.data ?? []) as unknown as { genre_id: string }[]),
+      ...((seriesGenresRes.data ?? []) as unknown as { genre_id: string }[]),
+    ];
+    for (const row of junctionRows) {
+      counts.set(row.genre_id, (counts.get(row.genre_id) ?? 0) + 1);
+    }
+    return genres
+      .map((g) => ({ slug: g.slug, name: g.name_mn, count: counts.get(g.id) ?? 0 }))
+      .filter((g) => g.count > 0)
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  },
+  ["catalog-genre-counts"],
+  CACHE_OPTS,
+);
+
+/** Distinct release years (movies + series, published), newest first. */
+export const getReleaseYears = unstable_cache(
+  async (): Promise<number[]> => {
+    const db = createPublicClient();
+    const [moviesRes, seriesRes] = await Promise.all([
+      db
+        .from("movies")
+        .select("release_year")
+        .eq("status", "published")
+        .is("deleted_at", null)
+        .not("release_year", "is", null)
+        .order("release_year", { ascending: false })
+        .limit(1000),
+      db
+        .from("series")
+        .select("release_year")
+        .eq("status", "published")
+        .is("deleted_at", null)
+        .not("release_year", "is", null)
+        .order("release_year", { ascending: false })
+        .limit(1000),
+    ]);
+    const years = new Set<number>();
+    for (const row of [
+      ...((moviesRes.data ?? []) as unknown as { release_year: number | null }[]),
+      ...((seriesRes.data ?? []) as unknown as { release_year: number | null }[]),
+    ]) {
+      if (typeof row.release_year === "number") years.add(row.release_year);
+    }
+    return [...years].sort((a, b) => b - a);
+  },
+  ["catalog-release-years"],
+  CACHE_OPTS,
+);
