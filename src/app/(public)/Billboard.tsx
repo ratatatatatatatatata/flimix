@@ -36,7 +36,7 @@ function parseYouTubeId(raw: string): string | null {
       return idPattern.test(id) ? id : null;
     }
     const match = url.pathname.match(/^\/(?:embed|shorts|v)\/([\w-]{6,})/);
-    return match ? match[1] : null;
+    return match?.[1] ?? null;
   }
   return null;
 }
@@ -45,7 +45,7 @@ function resolveTrailerMode(trailerUrl: string | null): TrailerMode {
   if (!trailerUrl) return { kind: "none" };
   const youtubeId = parseYouTubeId(trailerUrl);
   if (youtubeId) return { kind: "youtube", videoId: youtubeId };
-  const path = trailerUrl.split(/[?#]/)[0].toLowerCase();
+  const path = (trailerUrl.split(/[?#]/)[0] ?? trailerUrl).toLowerCase();
   if (path.endsWith(".m3u8")) return { kind: "file", format: "hls", url: trailerUrl };
   if (path.endsWith(".mp4") || path.endsWith(".webm")) {
     return { kind: "file", format: "progressive", url: trailerUrl };
