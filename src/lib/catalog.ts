@@ -974,3 +974,109 @@ export const getReleaseYears = unstable_cache(
   ["catalog-release-years"],
   CACHE_OPTS,
 );
+
+/* --------------------------------- billboard -------------------------------- */
+
+export interface BillboardData {
+  id: string;
+  slug: string;
+  type: "movie" | "series";
+  title: string;
+  /** Short description, trimmed to ~180 characters (word boundary). */
+  description: string | null;
+  year: number | null;
+  ageRating: string | null;
+  /** First three genre names (Mongolian). */
+  genres: string[];
+  trailerUrl: string | null;
+  backdropUrl: string | null;
+  posterUrl: string | null;
+}
+
+const BILLBOARD_DESC_MAX = 180;
+
+/** Trim a description to ~180 chars on a word boundary, with an ellipsis. */
+function billboardDescription(text: string | null): string | null {
+  if (!text) return null;
+  const clean = text.trim();
+  if (clean.length === 0) return null;
+  if (clean.length <= BILLBOARD_DESC_MAX) return clean;
+  const cut = clean.slice(0, BILLBOARD_DESC_MAX);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > BILLBOARD_DESC_MAX / 2 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
+}
+
+function billboardFromMovie(m: Movie): BillboardData {
+  return {
+    id: m.id,
+    slug: m.slug,
+    type: "movie",
+    title: m.title_mn,
+    description: billboardDescription(m.description_mn),
+    year: m.release_year,
+    ageRating: m.age_rating,
+    genres: (m.genres ?? []).map((g) => g.name_mn).slice(0, 3),
+    trailerUrl: m.trailer_url,
+    backdropUrl: m.backdrop_url,
+    posterUrl: m.poster_url,
+  };
+}
+
+function billboardFromSeries(s: Series): BillboardData {
+  return {
+    id: s.id,
+    slug: s.slug,
+    type: "series",
+    title: s.title_mn,
+    description: billboardDescription(s.description_mn),
+    year: s.release_year,
+    ageRating: s.age_rating,
+    genres: (s.genres ?? []).map((g) => g.name_mn).slice(0, 3),
+    trailerUrl: s.trailer_url,
+    backdropUrl: s.backdrop_url,
+    posterUrl: s.poster_url,
+  };
+}
+
+/**
+ * Landing billboard pick: the newest published movie with a trailer, else the
+ * newest series with a trailer, else the newest title with a backdrop (same
+ * movie-first order). Null only when the catalog is empty of candidates —
+ * the page then falls back to the marketing hero.
+ */
+export const getBillboard = unstable_cache(
+  async (): Promise<BillboardData | null> => {
+    const db = createPublicClient();
+
+    const newestOne = async <T>(
+      table: "movies" | "series",
+      column: "trailer_url" | "backdrop_url",
+    ): Promise<T | null> => {
+      const { data } = await db
+        .from(table)
+        .select("*, genres(*)")
+        .eq("status", "published")
+        .is("deleted_at", null)
+        .not(column, "is", null)
+        .order("published_at", { ascending: false, nullsFirst: false })
+        .limit(1);
+      return (((data ?? []) as unknown as T[])[0] ?? null);
+    };
+
+    const [movieTrailer, seriesTrailer, movieBackdrop, seriesBackdrop] =
+      await Promise.all([
+        newestOne<Movie>("movies", "trailer_url"),
+        newestOne<Series>("series", "trailer_url"),
+        newestOne<Movie>("movies", "backdrop_url"),
+        newestOne<Series>("series", "backdrop_url"),
+      ]);
+
+    if (movieTrailer) return billboardFromMovie(movieTrailer);
+    if (seriesTrailer) return billboardFromSeries(seriesTrailer);
+    if (movieBackdrop) return billboardFromMovie(movieBackdrop);
+    if (seriesBackdrop) return billboardFromSeries(seriesBackdrop);
+    return null;
+  },
+  ["catalog-billboard"],
+  CACHE_OPTS,
+);

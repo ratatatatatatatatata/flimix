@@ -1,30 +1,51 @@
 import Link from "next/link";
 import { Search, User } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
+import { GenreMenu, type GenreLink } from "@/components/layout/GenreMenu";
 import { HeaderSearch } from "@/components/layout/HeaderSearch";
 import { MobileNav, type MobileNavItem } from "@/components/layout/MobileNav";
 import { getSession } from "@/lib/auth";
+import { getGenreCounts } from "@/lib/catalog";
 import { t } from "@/lib/i18n";
 
-const nav: MobileNavItem[] = [
+const primaryLinks: { href: string; label: string }[] = [
   { href: "/", label: "Эхлэл" },
   { href: "/browse?type=movie", label: t.movies },
   { href: "/browse?type=series", label: t.multiPart },
-  { href: "/#zaavar", label: "Заавар" },
 ];
 
-/** Global site header (server component — reads session). */
+const guideLink: { href: string; label: string } = { href: "/#zaavar", label: "Заавар" };
+
+/** Cached genre list for the dropdown; a failure just hides the menu item. */
+async function getMenuGenres(): Promise<GenreLink[]> {
+  try {
+    const rows = await getGenreCounts();
+    return rows.map((g) => ({ slug: g.slug, name: g.name }));
+  } catch {
+    return [];
+  }
+}
+
+/** Global site header (server component — reads session + cached genres). */
 export async function SiteHeader() {
-  const session = await getSession();
+  const [session, genres] = await Promise.all([getSession(), getMenuGenres()]);
+
+  const mobileItems: MobileNavItem[] = [
+    ...primaryLinks.map((l): MobileNavItem => ({ kind: "link", ...l })),
+    ...(genres.length > 0
+      ? [{ kind: "genres", label: t.categories, genres } satisfies MobileNavItem]
+      : []),
+    { kind: "link", ...guideLink },
+  ];
 
   return (
     <header className="sticky top-0 z-40 border-b border-ink-600/40 bg-ink-950/85 backdrop-blur">
       <div className="container-fx flex h-16 items-center justify-between gap-4">
         <div className="flex items-center gap-2 md:gap-8">
-          <MobileNav items={nav} />
+          <MobileNav items={mobileItems} />
           <Logo />
           <nav className="hidden items-center gap-6 md:flex" aria-label="Үндсэн цэс">
-            {nav.map((item) => (
+            {primaryLinks.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
@@ -33,6 +54,13 @@ export async function SiteHeader() {
                 {item.label}
               </Link>
             ))}
+            {genres.length > 0 ? <GenreMenu genres={genres} /> : null}
+            <Link
+              href={guideLink.href}
+              className="text-sm text-mist-300 transition hover:text-white"
+            >
+              {guideLink.label}
+            </Link>
           </nav>
         </div>
         <div className="flex items-center gap-3">

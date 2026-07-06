@@ -54,7 +54,7 @@ export function GridSkeleton({ count = 10 }: { count?: number }) {
         <div className="skeleton h-6 w-44" />
         <div className="skeleton h-4 w-24" />
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4">
         {Array.from({ length: count }).map((_, i) => (
           <div key={i} className="space-y-2">
             <div className="skeleton aspect-[2/3] w-full" />
@@ -81,5 +81,37 @@ export function CarouselSkeleton() {
         ))}
       </div>
     </section>
+  );
+}
+
+/** Full-bleed shimmer matching the landing trailer billboard. */
+export function BillboardSkeleton() {
+  return (
+    <section className="relative min-h-[46vh] overflow-hidden sm:min-h-[60vh]" aria-hidden="true">
+      <div className="skeleton absolute inset-0 rounded-none" />
+      <div className="container-fx relative flex min-h-[46vh] flex-col justify-end gap-4 pb-12 sm:min-h-[60vh]">
+        <div className="skeleton h-6 w-16 rounded-full" />
+        <div className="skeleton h-10 w-2/3 max-w-lg" />
+        <div className="skeleton h-4 w-1/2 max-w-sm" />
+        <div className="flex gap-3">
+          <div className="skeleton h-12 w-40 rounded-lg" />
+          <div className="skeleton h-12 w-12 rounded-full" />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** card-surface shimmer for the landing sidebar widgets. */
+export function SidebarWidgetSkeleton({ rows = 6 }: { rows?: number }) {
+  return (
+    <div className="card-surface space-y-3 p-4" aria-hidden="true">
+      <div className="skeleton h-5 w-28" />
+      <div className="space-y-2">
+        {Array.from({ length: rows }).map((_, i) => (
+          <div key={i} className="skeleton h-8 w-full" />
+        ))}
+      </div>
+    </div>
   );
 }
