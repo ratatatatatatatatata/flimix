@@ -22,11 +22,13 @@ export function MiniBar({
   }
   const max = Math.max(...data.map((d) => d.value));
   const allZero = max <= 0;
+  const dense = data.length > 12;
+  const gapCls = dense ? "gap-px" : "gap-2";
 
   return (
     <div>
       <div
-        className="flex items-end gap-2 border-b border-ink-600/60"
+        className={`flex items-end ${gapCls} border-b border-ink-600/60`}
         style={{ height }}
       >
         {data.map((d, i) => {
@@ -50,11 +52,11 @@ export function MiniBar({
           );
         })}
       </div>
-      <div className="mt-1.5 flex gap-2">
+      <div className={`mt-1.5 flex ${gapCls}`}>
         {data.map((d, i) => (
           <span
             key={`${d.label}-l-${i}`}
-            className="flex-1 truncate text-center text-[11px] text-mist-500"
+            className="min-w-0 flex-1 overflow-visible whitespace-nowrap text-center text-[11px] text-mist-500"
           >
             {d.label}
           </span>
