@@ -1,4 +1,5 @@
 import { Logo } from "@/components/brand/Logo";
+import { AuthCard } from "./AuthCard";
 
 export default function AuthLayout({
   children,
@@ -19,9 +20,7 @@ export default function AuthLayout({
       <div className="relative z-10 mb-8">
         <Logo size="lg" />
       </div>
-      <main className="relative z-10 w-full max-w-md animate-fade-in rounded-2xl border border-ink-600/60 bg-ink-900/80 p-6 shadow-card backdrop-blur sm:p-8">
-        {children}
-      </main>
+      <AuthCard>{children}</AuthCard>
       <p className="relative z-10 mt-8 text-xs text-mist-500">
         © {new Date().getFullYear()} FLIMIX. Бүх эрх хуулиар хамгаалагдсан.
       </p>

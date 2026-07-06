@@ -4,10 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import type Hls from "hls.js";
-import { Play, Volume2, VolumeX } from "lucide-react";
-import { Badge } from "@/components/ui/Badge";
+import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { Info, Play, Volume2, VolumeX } from "lucide-react";
 import type { BillboardData } from "@/lib/catalog";
-import { t } from "@/lib/i18n";
+import { formatDuration, t } from "@/lib/i18n";
 
 /* ------------------------------ trailer parsing ----------------------------- */
 
@@ -67,13 +67,27 @@ function youtubeEmbedSrc(videoId: string, muted: boolean): string {
   return `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
 }
 
+/* -------------------------------- animation --------------------------------- */
+
+/** Badge → title → meta → description → buttons, each fade + 20px slide-up. */
+const contentVariants: Variants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.12, delayChildren: 0.1 } },
+};
+
+const lineVariants: Variants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } },
+};
+
 /* --------------------------------- component -------------------------------- */
 
 /**
  * Landing billboard — full-bleed hero that auto-plays the newest title's
  * trailer muted (YouTube iframe or direct file, HLS via lazy hls.js). Playback
  * starts only while the section is on screen and falls back to the static
- * backdrop on error or when the visitor prefers reduced motion.
+ * backdrop (with a slow 24s CSS zoom) on error or reduced motion. The text
+ * block reveals sequentially on mount via framer-motion variants.
  */
 export function Billboard({ data }: { data: BillboardData }) {
   const mode = useMemo(() => resolveTrailerMode(data.trailerUrl), [data.trailerUrl]);
@@ -81,20 +95,12 @@ export function Billboard({ data }: { data: BillboardData }) {
   const sectionRef = useRef<HTMLElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [visible, setVisible] = useState(false);
-  const [reducedMotion, setReducedMotion] = useState(false);
   const [failed, setFailed] = useState(false);
   const [muted, setMuted] = useState(true);
 
+  // Reduced motion: static backdrop, no trailer, no entrance animation.
+  const reducedMotion = useReducedMotion() ?? false;
   const playbackEnabled = mode.kind !== "none" && !failed && !reducedMotion;
-
-  // Respect prefers-reduced-motion: show the static backdrop instead.
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReducedMotion(mq.matches);
-    const onChange = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
 
   // Only run the trailer while the billboard is actually on screen.
   useEffect(() => {
@@ -155,10 +161,12 @@ export function Billboard({ data }: { data: BillboardData }) {
     if (videoRef.current) videoRef.current.muted = muted;
   }, [muted]);
 
-  const watchHref = data.type === "movie" ? `/movie/${data.slug}` : `/series/${data.slug}`;
+  const detailHref = data.type === "movie" ? `/movie/${data.slug}` : `/series/${data.slug}`;
+  const watchHref = data.type === "movie" ? `/watch/movie/${data.id}` : detailHref;
   const metaParts: string[] = [
     ...(data.year ? [String(data.year)] : []),
     ...(data.ageRating ? [data.ageRating] : []),
+    ...(data.durationSeconds ? [formatDuration(data.durationSeconds)] : []),
     ...data.genres,
   ];
 
@@ -169,7 +177,8 @@ export function Billboard({ data }: { data: BillboardData }) {
       className="relative overflow-hidden bg-ink-950"
     >
       {/* Static backdrop — always rendered: poster while the trailer loads,
-          and the sole visual when there is no playable trailer. */}
+          and the sole visual when there is no playable trailer. The slow
+          cinematic zoom is pure CSS (neutralized under reduced motion). */}
       {data.backdropUrl ? (
         <Image
           src={data.backdropUrl}
@@ -177,7 +186,7 @@ export function Billboard({ data }: { data: BillboardData }) {
           fill
           priority
           sizes="100vw"
-          className="object-cover"
+          className="hero-zoom object-cover"
         />
       ) : (
         <div
@@ -225,27 +234,56 @@ export function Billboard({ data }: { data: BillboardData }) {
 
       {/* Content */}
       <div className="relative z-10 flex min-h-[64vh] items-end md:min-h-[75vh]">
-        <div className="container-fx w-full animate-fade-in pb-16 pt-36 sm:pb-28 sm:pt-48">
-          <Badge tone="accent">ШИНЭ</Badge>
-          <h1 className="mt-3 max-w-2xl font-display text-2xl font-bold leading-tight text-white sm:text-4xl lg:text-5xl">
+        <motion.div
+          className="container-fx w-full pb-16 pt-36 sm:pb-28 sm:pt-48"
+          variants={contentVariants}
+          initial={reducedMotion ? false : "hidden"}
+          animate="visible"
+        >
+          <motion.div variants={lineVariants}>
+            <span className="inline-flex items-center rounded-full bg-brand-gradient px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-white shadow-accent">
+              FLIMIX ОНЦЛОХ
+            </span>
+          </motion.div>
+          <motion.h1
+            variants={lineVariants}
+            className="mt-3 max-w-2xl font-display text-2xl font-bold leading-tight text-white sm:text-4xl lg:text-5xl"
+          >
             {data.title}
-          </h1>
+          </motion.h1>
           {metaParts.length > 0 ? (
-            <p className="mt-3 text-sm text-mist-300">{metaParts.join(" · ")}</p>
+            <motion.p variants={lineVariants} className="mt-3 text-sm text-mist-300">
+              {metaParts.join(" · ")}
+            </motion.p>
           ) : null}
           {data.description ? (
-            <p className="mt-4 hidden max-w-xl text-sm leading-relaxed text-mist-200 sm:block">
+            <motion.p
+              variants={lineVariants}
+              className="mt-4 hidden max-w-xl text-sm leading-relaxed text-mist-200 sm:block"
+            >
               {data.description}
-            </p>
+            </motion.p>
           ) : null}
-          <div className="mt-6 flex flex-wrap items-center gap-3">
+          <motion.div
+            variants={lineVariants}
+            className="mt-6 flex flex-wrap items-center gap-3"
+          >
             <Link
               href={watchHref}
-              className="inline-flex items-center gap-2 rounded-lg bg-brand-gradient px-7 py-3 font-medium text-white shadow-accent transition hover:brightness-110"
+              className="btn-glow inline-flex items-center gap-2 rounded-lg bg-brand-gradient px-7 py-3 font-medium text-white shadow-accent transition hover:brightness-110"
             >
               <Play size={18} fill="currentColor" aria-hidden="true" />
               {t.watchNow}
             </Link>
+            {detailHref !== watchHref ? (
+              <Link
+                href={detailHref}
+                className="btn-glow glass inline-flex items-center gap-2 rounded-lg px-7 py-3 font-medium text-mist-100 transition hover:text-white"
+              >
+                <Info size={18} aria-hidden="true" />
+                Дэлгэрэнгүй
+              </Link>
+            ) : null}
             {playbackEnabled ? (
               <button
                 type="button"
@@ -261,8 +299,8 @@ export function Billboard({ data }: { data: BillboardData }) {
                 )}
               </button>
             ) : null}
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       </div>
     </section>
   );

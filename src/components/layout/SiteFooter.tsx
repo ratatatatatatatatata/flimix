@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
+import { Facebook, Instagram, Youtube } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
 import {
   getGenreCounts,
@@ -17,6 +18,13 @@ const menu = [
   { href: "/search", label: t.search },
   { href: "/subscribe", label: t.choosePlan },
   { href: "/#faq", label: t.faq },
+  { href: "/#zaavar", label: "Тусламж" },
+];
+
+const socials: { label: string; href: string; Icon: typeof Facebook }[] = [
+  { label: "FLIMIX Facebook хуудас", href: "#", Icon: Facebook },
+  { label: "FLIMIX Instagram хуудас", href: "#", Icon: Instagram },
+  { label: "FLIMIX YouTube суваг", href: "#", Icon: Youtube },
 ];
 
 const legal = [
@@ -132,6 +140,18 @@ export function SiteFooter() {
           <p className="max-w-xs text-sm text-mist-400">
             Монгол болон дэлхийн шилдэг кино, цувралуудыг нэг дороос.
           </p>
+          <div className="flex items-center gap-1">
+            {socials.map(({ label, href, Icon }) => (
+              <a
+                key={label}
+                href={href}
+                aria-label={label}
+                className="rounded-lg p-2 text-mist-400 transition hover:text-royal-300"
+              >
+                <Icon size={18} aria-hidden="true" />
+              </a>
+            ))}
+          </div>
           <nav aria-label="Цэс">
             <WidgetHeading>Цэс</WidgetHeading>
             <ul className="space-y-2 text-sm text-mist-400">
@@ -142,6 +162,11 @@ export function SiteFooter() {
                   </Link>
                 </li>
               ))}
+              <li>
+                <a className={linkClass} href="mailto:info@flimix.mn">
+                  Холбоо барих
+                </a>
+              </li>
             </ul>
           </nav>
         </div>

@@ -2,7 +2,14 @@ import Image from "next/image";
 import Link from "next/link";
 import { Play, Star } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
+import { CardFavorite } from "@/components/catalog/CardFavorite";
 import { t } from "@/lib/i18n";
+
+export interface PosterFavoriteTarget {
+  contentType: "movie" | "series";
+  contentId: string;
+  initialFavorited?: boolean;
+}
 
 export interface PosterCardProps {
   href: string;
@@ -20,12 +27,16 @@ export interface PosterCardProps {
   subtitle?: string | null;
   /** Fill the parent (grid cell) instead of the fixed row width. */
   fluid?: boolean;
+  /** Enables the hover heart (optimistic favorites toggle, desktop overlay). */
+  favorite?: PosterFavoriteTarget;
 }
 
 /**
  * Vertical poster card used in rows and grids. On pointer devices (md+) the
- * poster zooms (transform only — no layout shift) and a bottom info overlay
- * with a play affordance fades in; on touch a tap simply navigates.
+ * poster zooms slightly (1.06, transform only — no layout shift) with a purple
+ * glow, and a bottom info overlay fades in: play affordance, optional
+ * favorites heart, title, year and age rating. On touch a tap simply
+ * navigates — the overlay never renders below md.
  */
 export function PosterCard({
   href,
@@ -39,8 +50,10 @@ export function PosterCard({
   cornerBadge,
   subtitle,
   fluid,
+  favorite,
 }: PosterCardProps) {
   const meta = subtitle ?? [year, ageRating].filter(Boolean).join(" · ");
+  const hasRating = typeof rating === "number" && rating > 0;
   return (
     <Link
       href={href}
@@ -51,7 +64,7 @@ export function PosterCard({
       }
       title={title}
     >
-      <div className="relative aspect-[2/3] origin-center overflow-hidden rounded-lg border border-ink-600/40 bg-ink-800 shadow-card transition duration-200 ease-out group-hover:border-royal-500/50 group-hover:shadow-accent md:group-hover:scale-110">
+      <div className="relative aspect-[2/3] origin-center overflow-hidden rounded-lg border border-ink-600/40 bg-ink-800 shadow-card transition duration-200 ease-out group-hover:border-royal-500/50 group-hover:shadow-accent md:group-hover:scale-[1.06]">
         {posterUrl ? (
           <Image
             src={posterUrl}
@@ -78,24 +91,33 @@ export function PosterCard({
             <Badge tone="accent">Үнэгүй</Badge>
           </div>
         ) : null}
-        {typeof rating === "number" && rating > 0 ? (
+        {hasRating ? (
           <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-md bg-ink-950/80 px-1.5 py-0.5 text-[11px] font-semibold text-mist-100 backdrop-blur-sm">
             <Star size={11} className="text-royal-300" fill="currentColor" aria-hidden="true" />
             {rating.toFixed(1)}
           </span>
         ) : null}
-        {/* Hover info overlay — desktop only, pure CSS */}
-        <div
-          className="pointer-events-none absolute inset-0 hidden flex-col justify-end bg-card-fade p-3 opacity-0 transition-opacity duration-200 md:flex md:group-hover:opacity-100"
-          aria-hidden="true"
-        >
-          <p className="line-clamp-2 text-sm font-semibold leading-snug text-white">
+        {/* Hover info overlay — desktop only. Clicks fall through to the
+            card link except on the favorites heart. */}
+        <div className="absolute inset-0 hidden flex-col justify-end bg-card-fade p-3 opacity-0 transition-opacity duration-200 md:flex md:group-hover:opacity-100">
+          <p
+            className="pointer-events-none line-clamp-2 text-sm font-semibold leading-snug text-white"
+            aria-hidden="true"
+          >
             {title}
           </p>
-          {year || (typeof rating === "number" && rating > 0) ? (
-            <p className="mt-0.5 flex items-center gap-2 text-[11px] text-mist-300">
+          {year || ageRating || hasRating ? (
+            <p
+              className="pointer-events-none mt-0.5 flex items-center gap-2 text-[11px] text-mist-300"
+              aria-hidden="true"
+            >
               {year ? <span>{year}</span> : null}
-              {typeof rating === "number" && rating > 0 ? (
+              {ageRating ? (
+                <span className="rounded border border-mist-500/40 px-1 text-[10px] leading-4">
+                  {ageRating}
+                </span>
+              ) : null}
+              {hasRating ? (
                 <span className="inline-flex items-center gap-0.5">
                   <Star
                     size={10}
@@ -108,12 +130,24 @@ export function PosterCard({
               ) : null}
             </p>
           ) : null}
-          <span className="mt-2 inline-flex items-center gap-2 text-xs font-semibold text-white">
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-gradient shadow-accent">
-              <Play size={11} fill="currentColor" aria-hidden="true" />
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <span
+              className="pointer-events-none inline-flex items-center gap-2 text-xs font-semibold text-white"
+              aria-hidden="true"
+            >
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-gradient shadow-accent">
+                <Play size={11} fill="currentColor" aria-hidden="true" />
+              </span>
+              {t.watchNow}
             </span>
-            {t.watchNow}
-          </span>
+            {favorite ? (
+              <CardFavorite
+                contentType={favorite.contentType}
+                contentId={favorite.contentId}
+                initialFavorited={favorite.initialFavorited}
+              />
+            ) : null}
+          </div>
         </div>
         {typeof progressPercent === "number" && progressPercent > 0 ? (
           <div className="absolute inset-x-0 bottom-0 h-1 bg-ink-700">

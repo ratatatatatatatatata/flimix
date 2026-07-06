@@ -101,3 +101,72 @@ export function BillboardSkeleton() {
     </section>
   );
 }
+
+/** Single 16:9 landscape-card shimmer (fixed row width or fluid grid cell). */
+export function LandscapeSkeleton({ fluid = false }: { fluid?: boolean }) {
+  return (
+    <div
+      className={
+        fluid ? "skeleton aspect-video w-full" : "skeleton aspect-video w-64 shrink-0 sm:w-72"
+      }
+    />
+  );
+}
+
+/** Row-shaped skeleton matching a horizontal LandscapeCard strip. */
+export function LandscapeRowSkeleton({ count = 5 }: { count?: number }) {
+  return (
+    <div className="space-y-3" aria-hidden="true">
+      <div className="skeleton h-6 w-44" />
+      <div className="row-scroll flex gap-3 overflow-hidden sm:gap-4">
+        {Array.from({ length: count }).map((_, i) => (
+          <LandscapeSkeleton key={i} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Grid-shaped skeleton matching the /browse LandscapeCard results grid. */
+export function LandscapeGridSkeleton({ count = 8 }: { count?: number }) {
+  return (
+    <div
+      className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
+      aria-hidden="true"
+    >
+      {Array.from({ length: count }).map((_, i) => (
+        <LandscapeSkeleton key={i} fluid />
+      ))}
+    </div>
+  );
+}
+
+/** Wide 21:9 banner shimmer for the featured editorial collection. */
+export function FeaturedBannerSkeleton() {
+  return (
+    <div
+      className="skeleton aspect-[16/9] w-full rounded-2xl sm:aspect-[21/9]"
+      aria-hidden="true"
+    />
+  );
+}
+
+/** Heading + plan-card shimmer for the landing subscription section. */
+export function PlanSectionSkeleton() {
+  return (
+    <div className="space-y-8" aria-hidden="true">
+      <div className="mx-auto space-y-3">
+        <div className="skeleton mx-auto h-8 w-56" />
+        <div className="skeleton mx-auto h-4 w-72" />
+      </div>
+      <div className="mx-auto w-full max-w-sm space-y-4 rounded-2xl border border-ink-600/40 p-8">
+        <div className="skeleton h-4 w-32" />
+        <div className="skeleton h-9 w-40" />
+        <div className="skeleton h-4 w-full" />
+        <div className="skeleton h-4 w-5/6" />
+        <div className="skeleton h-4 w-2/3" />
+        <div className="skeleton h-12 w-full rounded-lg" />
+      </div>
+    </div>
+  );
+}

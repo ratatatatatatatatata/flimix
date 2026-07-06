@@ -39,7 +39,7 @@ export default async function BrowsePage({
   const sp = await searchParams;
   const f = parseBrowseFilters(sp);
 
-  const [{ genres, countries, languages }, years, result] = await Promise.all([
+  const [{ genres }, years, result] = await Promise.all([
     getBrowseTaxonomies(),
     getReleaseYears(),
     browseCatalog(f),
@@ -71,20 +71,16 @@ export default async function BrowsePage({
   const hasNext =
     f.page * perTable < result.movies.count || f.page * perTable < result.series.count;
 
+  const pageTitle =
+    f.type === "movie" ? t.movies : f.type === "series" ? t.multiPart : t.categories;
+
   return (
     <div className="container-fx py-10 sm:py-12">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h1 className="font-display text-2xl font-bold text-white sm:text-3xl">
-          {t.categories}
-        </h1>
-        <p className="text-sm text-mist-500">Нийт {totalCount} контент</p>
-      </div>
-
       <FilterBar
         filters={f}
+        title={pageTitle}
+        count={totalCount}
         genres={genres.map((g) => ({ key: g.id, label: g.name_mn, value: g.slug }))}
-        countries={countries.map((c) => ({ key: c.id, label: c.name_mn, value: c.code }))}
-        languages={languages.map((l) => ({ key: l.id, label: l.name_mn, value: l.code }))}
         years={years}
         pagination={cards.length > 0 ? { page: f.page, hasPrev, hasNext } : null}
       >

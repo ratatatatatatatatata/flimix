@@ -14,6 +14,7 @@ import type {
   Language,
   Movie,
   Series,
+  SubscriptionPlan,
   SubtitleTrack,
 } from "@/types/db";
 
@@ -41,9 +42,12 @@ export interface CatalogCard {
   href: string;
   title: string;
   posterUrl: string | null;
+  backdropUrl: string | null;
   year: number | null;
   ageRating: string | null;
   isFree?: boolean;
+  /** Published (or created) within the last 14 days. */
+  isNew?: boolean;
   progressPercent?: number;
 }
 
@@ -60,15 +64,28 @@ export function isLive(
   return !!x && x.status === "published" && !x.deleted_at;
 }
 
+const NEW_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+
+/** True when the row went live (published_at, else created_at) within 14 days. */
+export function isRecentRelease(
+  publishedAt: string | null,
+  createdAt: string,
+): boolean {
+  const ts = Date.parse(publishedAt ?? createdAt);
+  return Number.isFinite(ts) && Date.now() - ts <= NEW_WINDOW_MS;
+}
+
 export function movieToCard(m: Movie): CatalogCard {
   return {
     key: `movie-${m.id}`,
     href: `/movie/${m.slug}`,
     title: m.title_mn,
     posterUrl: m.poster_url,
+    backdropUrl: m.backdrop_url,
     year: m.release_year,
     ageRating: m.age_rating,
     isFree: m.is_free,
+    isNew: isRecentRelease(m.published_at, m.created_at),
   };
 }
 
@@ -78,8 +95,10 @@ export function seriesToCard(s: Series): CatalogCard {
     href: `/series/${s.slug}`,
     title: s.title_mn,
     posterUrl: s.poster_url,
+    backdropUrl: s.backdrop_url,
     year: s.release_year,
     ageRating: s.age_rating,
+    isNew: isRecentRelease(s.published_at, s.created_at),
   };
 }
 
@@ -698,6 +717,8 @@ export interface LatestEpisodeCard {
   /** Series title + " S{season} A{episode}" of its newest episode. */
   title: string;
   posterUrl: string | null;
+  /** Series backdrop (episodes carry no backdrop of their own). */
+  backdropUrl: string | null;
   rating: number | null;
   /** ISO date of the newest episode (published_at, else created_at). */
   date: string;
@@ -716,6 +737,7 @@ interface LatestEpisodeJoinRow {
       slug: string;
       title_mn: string;
       poster_url: string | null;
+      backdrop_url: string | null;
       rating: number | null;
       status: string;
       deleted_at: string | null;
@@ -730,7 +752,7 @@ export const getLatestEpisodesGrid = unstable_cache(
     const { data } = await db
       .from("episodes")
       .select(
-        "id, episode_number, poster_url, published_at, created_at, season:seasons(season_number, series:series(id, slug, title_mn, poster_url, rating, status, deleted_at))",
+        "id, episode_number, poster_url, published_at, created_at, season:seasons(season_number, series:series(id, slug, title_mn, poster_url, backdrop_url, rating, status, deleted_at))",
       )
       .eq("status", "published")
       .order("published_at", { ascending: false, nullsFirst: false })
@@ -750,6 +772,7 @@ export const getLatestEpisodesGrid = unstable_cache(
         seriesSlug: series.slug,
         title: `${series.title_mn} S${row.season.season_number} A${row.episode_number}`,
         posterUrl: series.poster_url,
+        backdropUrl: series.backdrop_url,
         rating: series.rating,
         date: row.published_at ?? row.created_at,
       });
@@ -766,9 +789,12 @@ export interface LatestMovieCard {
   slug: string;
   title: string;
   posterUrl: string | null;
+  backdropUrl: string | null;
   year: number | null;
   rating: number | null;
   isFree: boolean;
+  /** Published (or created) within the last 14 days. */
+  isNew: boolean;
   /** "ХАДМАЛ" when the movie has at least one subtitle track, else null. */
   subtitleBadge: string | null;
 }
@@ -795,9 +821,11 @@ export const getLatestMoviesGrid = unstable_cache(
       slug: m.slug,
       title: m.title_mn,
       posterUrl: m.poster_url,
+      backdropUrl: m.backdrop_url,
       year: m.release_year,
       rating: m.rating,
       isFree: m.is_free,
+      isNew: isRecentRelease(m.published_at, m.created_at),
       subtitleBadge: withSubs.has(m.id) ? "ХАДМАЛ" : null,
     }));
   },
@@ -875,6 +903,141 @@ export const getGenreCounts = unstable_cache(
   CACHE_OPTS,
 );
 
+/* -------------------------------- genre rows -------------------------------- */
+
+export interface GenreRowItem {
+  id: string;
+  slug: string;
+  type: "movie" | "series";
+  title: string;
+  backdropUrl: string | null;
+  posterUrl: string | null;
+  year: number | null;
+  rating: number | null;
+  isNew: boolean;
+}
+
+export interface GenreRow {
+  genreSlug: string;
+  genreName: string;
+  items: GenreRowItem[];
+}
+
+interface GenreRowContent {
+  id: string;
+  slug: string;
+  title_mn: string;
+  backdrop_url: string | null;
+  poster_url: string | null;
+  release_year: number | null;
+  rating: number | null;
+  published_at: string | null;
+  created_at: string;
+}
+
+const GENRE_ROW_COLS =
+  "id, slug, title_mn, backdrop_url, poster_url, release_year, rating, published_at, created_at";
+const GENRE_ROWS_MAX = 10;
+const GENRE_ROW_ITEMS_MAX = 12;
+
+function genreRowItem(c: GenreRowContent, type: "movie" | "series"): GenreRowItem {
+  return {
+    id: c.id,
+    slug: c.slug,
+    type,
+    title: c.title_mn,
+    backdropUrl: c.backdrop_url,
+    posterUrl: c.poster_url,
+    year: c.release_year,
+    rating: c.rating,
+    isNew: isRecentRelease(c.published_at, c.created_at),
+  };
+}
+
+/**
+ * Genre rows for /browse: up to `limit` genres (published content count desc),
+ * each with up to 12 published titles (movies + series mixed per the type
+ * filter, newest first). Junction rows + joined content are fetched flat and
+ * assembled in JS — same style as getGenreCounts.
+ */
+export const getGenreRows = unstable_cache(
+  async (input: {
+    type: "all" | "movie" | "series";
+    limit?: number;
+  }): Promise<GenreRow[]> => {
+    const db = createPublicClient();
+    const wantMovies = input.type !== "series";
+    const wantSeries = input.type !== "movie";
+
+    const [genresRes, movieRes, seriesRes] = await Promise.all([
+      db.from("genres").select("*"),
+      wantMovies
+        ? db
+            .from("movie_genres")
+            .select(`genre_id, movies!inner(${GENRE_ROW_COLS})`)
+            .eq("movies.status", "published")
+            .is("movies.deleted_at", null)
+            .limit(5000)
+        : Promise.resolve({ data: [] }),
+      wantSeries
+        ? db
+            .from("series_genres")
+            .select(`genre_id, series!inner(${GENRE_ROW_COLS})`)
+            .eq("series.status", "published")
+            .is("series.deleted_at", null)
+            .limit(5000)
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    const genres = (genresRes.data ?? []) as unknown as Genre[];
+    const movieRows = (movieRes.data ?? []) as unknown as {
+      genre_id: string;
+      movies: GenreRowContent | null;
+    }[];
+    const seriesRows = (seriesRes.data ?? []) as unknown as {
+      genre_id: string;
+      series: GenreRowContent | null;
+    }[];
+
+    const byGenre = new Map<string, { publishedAt: number; item: GenreRowItem }[]>();
+    const push = (
+      genreId: string,
+      content: GenreRowContent | null,
+      type: "movie" | "series",
+    ) => {
+      if (!content) return;
+      const list = byGenre.get(genreId) ?? [];
+      list.push({
+        publishedAt: Date.parse(content.published_at ?? content.created_at) || 0,
+        item: genreRowItem(content, type),
+      });
+      byGenre.set(genreId, list);
+    };
+    for (const row of movieRows) push(row.genre_id, row.movies, "movie");
+    for (const row of seriesRows) push(row.genre_id, row.series, "series");
+
+    return genres
+      .map((g) => ({ genre: g, entries: byGenre.get(g.id) ?? [] }))
+      .filter((r) => r.entries.length > 0)
+      .sort(
+        (a, b) =>
+          b.entries.length - a.entries.length ||
+          a.genre.name_mn.localeCompare(b.genre.name_mn),
+      )
+      .slice(0, input.limit ?? GENRE_ROWS_MAX)
+      .map((r) => ({
+        genreSlug: r.genre.slug,
+        genreName: r.genre.name_mn,
+        items: r.entries
+          .sort((a, b) => b.publishedAt - a.publishedAt)
+          .slice(0, GENRE_ROW_ITEMS_MAX)
+          .map((e) => e.item),
+      }));
+  },
+  ["catalog-genre-rows"],
+  CACHE_OPTS,
+);
+
 export interface TopRatedTitle {
   slug: string;
   type: "movie" | "series";
@@ -882,6 +1045,7 @@ export interface TopRatedTitle {
   year: number | null;
   rating: number;
   posterUrl: string | null;
+  backdropUrl: string | null;
 }
 
 interface RatedRow {
@@ -890,6 +1054,7 @@ interface RatedRow {
   release_year: number | null;
   rating: number | null;
   poster_url: string | null;
+  backdrop_url: string | null;
 }
 
 /**
@@ -899,7 +1064,7 @@ interface RatedRow {
 export const getTopRatedTitles = unstable_cache(
   async (limit: number = 10): Promise<TopRatedTitle[]> => {
     const db = createPublicClient();
-    const cols = "slug, title_mn, release_year, rating, poster_url";
+    const cols = "slug, title_mn, release_year, rating, poster_url, backdrop_url";
     const [moviesRes, seriesRes] = await Promise.all([
       db
         .from("movies")
@@ -928,6 +1093,7 @@ export const getTopRatedTitles = unstable_cache(
           year: r.release_year,
           rating: r.rating,
           posterUrl: r.poster_url,
+          backdropUrl: r.backdrop_url,
         }));
     return [
       ...toItems((moviesRes.data ?? []) as unknown as RatedRow[], "movie"),
@@ -986,6 +1152,8 @@ export interface BillboardData {
   description: string | null;
   year: number | null;
   ageRating: string | null;
+  /** Runtime in seconds (movies only — series carry none). */
+  durationSeconds: number | null;
   /** First three genre names (Mongolian). */
   genres: string[];
   trailerUrl: string | null;
@@ -1015,6 +1183,7 @@ function billboardFromMovie(m: Movie): BillboardData {
     description: billboardDescription(m.description_mn),
     year: m.release_year,
     ageRating: m.age_rating,
+    durationSeconds: m.duration_seconds,
     genres: (m.genres ?? []).map((g) => g.name_mn).slice(0, 3),
     trailerUrl: m.trailer_url,
     backdropUrl: m.backdrop_url,
@@ -1031,6 +1200,7 @@ function billboardFromSeries(s: Series): BillboardData {
     description: billboardDescription(s.description_mn),
     year: s.release_year,
     ageRating: s.age_rating,
+    durationSeconds: null,
     genres: (s.genres ?? []).map((g) => g.name_mn).slice(0, 3),
     trailerUrl: s.trailer_url,
     backdropUrl: s.backdrop_url,
@@ -1078,5 +1248,103 @@ export const getBillboard = unstable_cache(
     return null;
   },
   ["catalog-billboard"],
+  CACHE_OPTS,
+);
+
+/* ---------------------------- editorial banner ------------------------------ */
+
+export interface EditorialBanner {
+  kind: "collection" | "title";
+  title: string;
+  /** Short Mongolian blurb (~180 chars, word boundary). */
+  description: string | null;
+  backdropUrl: string | null;
+  href: string;
+  /** Live items in the collection (0 for the single-title fallback). */
+  itemCount: number;
+}
+
+/**
+ * Editorial homepage banner: the first published "banner" CMS section (its
+ * live items provide artwork and blurb), else the most popular published
+ * movie with a backdrop. Null only when the catalog has no candidates.
+ */
+export const getEditorialCollection = unstable_cache(
+  async (): Promise<EditorialBanner | null> => {
+    const db = createPublicClient();
+    const { data } = await db
+      .from("homepage_sections")
+      .select(
+        "*, items:homepage_section_items(*, movie:movies(*, genres(*)), series:series(*, genres(*)))",
+      )
+      .eq("status", "published")
+      .eq("layout", "banner")
+      .order("sort_order", { ascending: true })
+      .limit(1);
+    const section = ((data ?? []) as unknown as HomepageSection[])[0];
+
+    if (section) {
+      const items = [...(section.items ?? [])].sort(
+        (a, b) => a.sort_order - b.sort_order,
+      );
+      let backdropUrl: string | null = null;
+      let description: string | null = null;
+      let liveCount = 0;
+      for (const item of items) {
+        const content = item.content_type === "movie" ? item.movie : item.series;
+        if (!content || !isLive(content)) continue;
+        liveCount += 1;
+        backdropUrl ??= content.backdrop_url;
+        description ??= content.description_mn;
+      }
+      if (liveCount > 0) {
+        return {
+          kind: "collection",
+          title: section.title_mn,
+          description: billboardDescription(description),
+          backdropUrl,
+          href: "/browse",
+          itemCount: liveCount,
+        };
+      }
+    }
+
+    const { data: movies } = await db
+      .from("movies")
+      .select("*")
+      .eq("status", "published")
+      .is("deleted_at", null)
+      .not("backdrop_url", "is", null)
+      .order("popularity", { ascending: false })
+      .limit(1);
+    const movie = ((movies ?? []) as unknown as Movie[])[0];
+    if (!movie) return null;
+    return {
+      kind: "title",
+      title: movie.title_mn,
+      description: billboardDescription(movie.description_mn),
+      backdropUrl: movie.backdrop_url,
+      href: `/movie/${movie.slug}`,
+      itemCount: 0,
+    };
+  },
+  ["catalog-editorial-banner"],
+  CACHE_OPTS,
+);
+
+/* ------------------------------ subscription -------------------------------- */
+
+/** Active subscription plans (price ascending) for the landing plan section. */
+export const getActivePlans = unstable_cache(
+  async (): Promise<SubscriptionPlan[]> => {
+    const db = createPublicClient();
+    const { data } = await db
+      .from("subscription_plans")
+      .select("*")
+      .eq("is_active", true)
+      .order("price_mnt", { ascending: true });
+    return (data ?? []) as unknown as SubscriptionPlan[];
+  },
+  ["catalog-active-plans"],
   CACHE_OPTS,
 );

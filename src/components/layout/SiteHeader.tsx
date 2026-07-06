@@ -5,9 +5,14 @@ import { GenreMenu, type GenreLink } from "@/components/layout/GenreMenu";
 import { HeaderSearch } from "@/components/layout/HeaderSearch";
 import { HeaderShell } from "@/components/layout/HeaderShell";
 import { MobileNav, type MobileNavItem } from "@/components/layout/MobileNav";
+import {
+  NotificationBell,
+  type HeaderNotification,
+} from "@/components/layout/NotificationBell";
 import { ProfileMenu } from "@/components/layout/ProfileMenu";
 import { getSession } from "@/lib/auth";
-import { getGenreCounts } from "@/lib/catalog";
+import { getGenreCounts, getTopRatedTitles } from "@/lib/catalog";
+import { createClient } from "@/lib/supabase/server";
 import { t } from "@/lib/i18n";
 
 const primaryLinks: { href: string; label: string }[] = [
@@ -28,12 +33,43 @@ async function getMenuGenres(): Promise<GenreLink[]> {
   }
 }
 
+/** Trending chip suggestions for the search overlay (cached, best-effort). */
+async function getTrendingSuggestions(): Promise<{ title: string }[]> {
+  try {
+    const rows = await getTopRatedTitles(8);
+    return rows.map((r) => ({ title: r.title }));
+  } catch {
+    return [];
+  }
+}
+
+/** Latest five notifications for the bell; a failure shows an empty panel. */
+async function getHeaderNotifications(userId: string): Promise<HeaderNotification[]> {
+  try {
+    const db = await createClient();
+    const { data } = await db
+      .from("notifications")
+      .select("id, title_mn, body_mn, created_at, read_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(5);
+    return (data ?? []) as HeaderNotification[];
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Global site header (server component — reads session + cached genres).
  * Rendered inside a fixed, scroll-aware shell that overlays the billboard.
  */
 export async function SiteHeader() {
-  const [session, genres] = await Promise.all([getSession(), getMenuGenres()]);
+  const [session, genres, trending] = await Promise.all([
+    getSession(),
+    getMenuGenres(),
+    getTrendingSuggestions(),
+  ]);
+  const notifications = session ? await getHeaderNotifications(session.userId) : [];
 
   const mobileItems: MobileNavItem[] = [
     ...primaryLinks.map((l): MobileNavItem => ({ kind: "link", ...l })),
@@ -71,9 +107,12 @@ export async function SiteHeader() {
           </nav>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-3">
-          <HeaderSearch />
+          <HeaderSearch trending={trending} />
           {session ? (
-            <ProfileMenu initial={initial} signOutAction={signOutAction} />
+            <>
+              <NotificationBell notifications={notifications} />
+              <ProfileMenu initial={initial} signOutAction={signOutAction} />
+            </>
           ) : (
             <>
               <Link

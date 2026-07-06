@@ -2,8 +2,13 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { Monitor, Smartphone, Tablet, Tv } from "lucide-react";
 import { ContentRow } from "@/components/catalog/ContentRow";
-import { PosterCard } from "@/components/catalog/PosterCard";
-import { BillboardSkeleton, RowSkeleton } from "@/components/ui/Skeletons";
+import { LandscapeCard } from "@/components/catalog/LandscapeCard";
+import {
+  BillboardSkeleton,
+  FeaturedBannerSkeleton,
+  LandscapeRowSkeleton,
+  PlanSectionSkeleton,
+} from "@/components/ui/Skeletons";
 import { getSession } from "@/lib/auth";
 import {
   AUTO_SEE_ALL,
@@ -23,6 +28,8 @@ import { formatMnt, formatShortDateMn, t } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 import type { HomepageSection, Movie, WatchProgress } from "@/types/db";
 import { Billboard } from "./Billboard";
+import { FeaturedCollection } from "./FeaturedCollection";
+import { PlanSection } from "./PlanSection";
 
 type Db = Awaited<ReturnType<typeof createClient>>;
 
@@ -110,11 +117,12 @@ async function LatestEpisodesRow() {
       seeAllHref="/browse?type=series&sort=newest"
     >
       {cards.map((c) => (
-        <PosterCard
+        <LandscapeCard
           key={`ep-${c.seriesSlug}`}
           href={`/series/${c.seriesSlug}`}
           title={c.title}
-          posterUrl={c.posterUrl}
+          imageUrl={c.backdropUrl ?? c.posterUrl}
+          badge="ШИНЭ АНГИ"
           rating={c.rating}
           subtitle={formatShortDateMn(c.date)}
         />
@@ -137,15 +145,14 @@ async function LatestMoviesRow() {
       seeAllHref="/browse?type=movie&sort=newest"
     >
       {cards.map((m) => (
-        <PosterCard
+        <LandscapeCard
           key={`mv-${m.id}`}
           href={`/movie/${m.slug}`}
           title={m.title}
-          posterUrl={m.posterUrl}
-          year={m.year}
+          imageUrl={m.backdropUrl ?? m.posterUrl}
+          badge={m.isNew ? "ШИНЭ" : m.subtitleBadge}
           rating={m.rating}
-          isFree={m.isFree}
-          cornerBadge={m.subtitleBadge}
+          subtitle={m.year ? String(m.year) : null}
         />
       ))}
     </ContentRow>
@@ -159,13 +166,13 @@ async function TopRatedRow() {
   return (
     <ContentRow title="ШИЛДЭГ КИНОНУУД" seeAllHref="/browse?sort=rating">
       {cards.map((c) => (
-        <PosterCard
+        <LandscapeCard
           key={`top-${c.type}-${c.slug}`}
           href={`/${c.type}/${c.slug}`}
           title={c.title}
-          posterUrl={c.posterUrl}
-          year={c.year}
+          imageUrl={c.backdropUrl ?? c.posterUrl}
           rating={c.rating}
+          subtitle={c.year ? String(c.year) : null}
         />
       ))}
     </ContentRow>
@@ -181,7 +188,12 @@ interface EpisodeJoinRow {
   poster_url: string | null;
   season: {
     season_number: number;
-    series: { slug: string; title_mn: string; poster_url: string | null } | null;
+    series: {
+      slug: string;
+      title_mn: string;
+      poster_url: string | null;
+      backdrop_url: string | null;
+    } | null;
   } | null;
 }
 
@@ -213,7 +225,7 @@ async function fetchContinueWatching(db: Db, userId: string): Promise<CatalogCar
       ? db
           .from("episodes")
           .select(
-            "id, title_mn, episode_number, poster_url, season:seasons(season_number, series:series(slug, title_mn, poster_url))",
+            "id, title_mn, episode_number, poster_url, season:seasons(season_number, series:series(slug, title_mn, poster_url, backdrop_url))",
           )
           .in("id", episodeIds)
       : Promise.resolve({ data: [] }),
@@ -240,6 +252,7 @@ async function fetchContinueWatching(db: Db, userId: string): Promise<CatalogCar
         href: `/watch/movie/${m.id}`,
         title: m.title_mn,
         posterUrl: m.poster_url,
+        backdropUrl: m.backdrop_url,
         year: m.release_year,
         ageRating: m.age_rating,
         progressPercent: percent,
@@ -252,6 +265,7 @@ async function fetchContinueWatching(db: Db, userId: string): Promise<CatalogCar
         href: `/watch/episode/${e.id}`,
         title: `${e.season.series.title_mn} · S${e.season.season_number}A${e.episode_number}`,
         posterUrl: e.poster_url ?? e.season.series.poster_url,
+        backdropUrl: e.season.series.backdrop_url,
         year: null,
         ageRating: null,
         progressPercent: percent,
@@ -274,13 +288,13 @@ async function ContinueWatchingRow() {
   return (
     <ContentRow title={t.continueWatching} seeAllHref="/account/history">
       {cards.map((c) => (
-        <PosterCard
+        <LandscapeCard
           key={c.key}
           href={c.href}
           title={c.title}
-          posterUrl={c.posterUrl}
-          year={c.year}
-          ageRating={c.ageRating}
+          imageUrl={c.backdropUrl ?? c.posterUrl}
+          actionLabel={t.watchNow}
+          subtitle={c.year ? String(c.year) : null}
           progressPercent={c.progressPercent}
         />
       ))}
@@ -305,14 +319,13 @@ async function SectionRow({ section }: { section: HomepageSection }) {
   return (
     <ContentRow title={section.title_mn} seeAllHref={seeAllHref}>
       {items.map((c) => (
-        <PosterCard
+        <LandscapeCard
           key={c.key}
           href={c.href}
           title={c.title}
-          posterUrl={c.posterUrl}
-          year={c.year}
-          ageRating={c.ageRating}
-          isFree={c.isFree}
+          imageUrl={c.backdropUrl ?? c.posterUrl}
+          badge={c.isNew ? "ШИНЭ" : null}
+          subtitle={c.year ? String(c.year) : null}
         />
       ))}
     </ContentRow>
@@ -327,14 +340,13 @@ async function FallbackRows() {
       {rows.map((row) => (
         <ContentRow key={row.id} title={row.title} seeAllHref={row.seeAllHref}>
           {row.items.map((c) => (
-            <PosterCard
+            <LandscapeCard
               key={c.key}
               href={c.href}
               title={c.title}
-              posterUrl={c.posterUrl}
-              year={c.year}
-              ageRating={c.ageRating}
-              isFree={c.isFree}
+              imageUrl={c.backdropUrl ?? c.posterUrl}
+              badge={c.isNew ? "ШИНЭ" : null}
+              subtitle={c.year ? String(c.year) : null}
             />
           ))}
         </ContentRow>
@@ -351,7 +363,7 @@ async function CatalogSections() {
   return (
     <>
       {rowSections.map((section) => (
-        <Suspense key={section.id} fallback={<RowSkeleton />}>
+        <Suspense key={section.id} fallback={<LandscapeRowSkeleton />}>
           <SectionRow section={section} />
         </Suspense>
       ))}
@@ -414,27 +426,27 @@ export default function LandingPage() {
       {/* ----------------------------- CONTENT ROWS ------------------------- */}
       <div className="relative z-10 -mt-10 sm:-mt-20">
         <div className="container-fx space-y-10 pb-16">
-          <Suspense fallback={<RowSkeleton />}>
+          <Suspense fallback={<LandscapeRowSkeleton />}>
             <ContinueWatchingRow />
           </Suspense>
 
-          <Suspense fallback={<RowSkeleton />}>
+          <Suspense fallback={<LandscapeRowSkeleton />}>
             <LatestEpisodesRow />
           </Suspense>
 
-          <Suspense fallback={<RowSkeleton />}>
+          <Suspense fallback={<LandscapeRowSkeleton />}>
             <LatestMoviesRow />
           </Suspense>
 
-          <Suspense fallback={<RowSkeleton />}>
+          <Suspense fallback={<LandscapeRowSkeleton />}>
             <TopRatedRow />
           </Suspense>
 
           <Suspense
             fallback={
               <>
-                <RowSkeleton />
-                <RowSkeleton />
+                <LandscapeRowSkeleton />
+                <LandscapeRowSkeleton />
               </>
             }
           >
@@ -445,6 +457,11 @@ export default function LandingPage() {
 
       {/* --------------------------- MARKETING SECTIONS --------------------- */}
       <div className="container-fx space-y-16 pb-8">
+        {/* ----------------------- FEATURED COLLECTION ---------------------- */}
+        <Suspense fallback={<FeaturedBannerSkeleton />}>
+          <FeaturedCollection />
+        </Suspense>
+
         {/* --------------------------- APP PROMO ---------------------------- */}
         <section className="overflow-hidden rounded-2xl border border-ink-600/40 bg-ink-900">
           <div className="grid items-center gap-12 px-6 py-14 sm:px-10 md:grid-cols-2">
@@ -542,21 +559,10 @@ export default function LandingPage() {
           </section>
         </div>
 
-        {/* ----------------------------- CTA BAND --------------------------- */}
-        <section className="relative overflow-hidden rounded-2xl border border-royal-600/30 bg-gradient-to-r from-royal-700/25 via-ink-800 to-ink-900 px-6 py-14 text-center sm:px-12">
-          <h2 className="font-display text-2xl font-bold text-white sm:text-3xl">
-            Өнөөдөр эхлээрэй
-          </h2>
-          <p className="mx-auto mt-3 max-w-md text-mist-300">
-            Сарын багц {formatMnt(14900)}{t.perMonth} — хүссэн үедээ цуцална.
-          </p>
-          <Link
-            href="/subscribe"
-            className="mt-7 inline-flex items-center justify-center rounded-lg bg-brand-gradient px-8 py-3.5 text-base font-medium text-white shadow-accent transition hover:brightness-110"
-          >
-            {t.choosePlan}
-          </Link>
-        </section>
+        {/* --------------------------- SUBSCRIPTION ------------------------- */}
+        <Suspense fallback={<PlanSectionSkeleton />}>
+          <PlanSection />
+        </Suspense>
       </div>
     </div>
   );
