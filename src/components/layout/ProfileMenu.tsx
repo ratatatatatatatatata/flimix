@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, History, LogOut, Star, User } from "lucide-react";
+import { ChevronDown, History, LogOut, ShieldCheck, Star, User } from "lucide-react";
 import { t } from "@/lib/i18n";
 
 interface ProfileMenuProps {
@@ -10,6 +10,8 @@ interface ProfileMenuProps {
   initial: string;
   /** Server action that signs the user out (passed from SiteHeader). */
   signOutAction: () => Promise<void>;
+  /** Show the admin dashboard link (content_manager and above). */
+  isAdmin?: boolean;
 }
 
 /**
@@ -17,7 +19,7 @@ interface ProfileMenuProps {
  * with account shortcuts and a sign-out form. Closes on outside click,
  * Escape or navigation.
  */
-export function ProfileMenu({ initial, signOutAction }: ProfileMenuProps) {
+export function ProfileMenu({ initial, signOutAction, isAdmin = false }: ProfileMenuProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -64,6 +66,16 @@ export function ProfileMenu({ initial, signOutAction }: ProfileMenuProps) {
       {open ? (
         <div className="absolute right-0 top-full z-50 w-56 pt-3">
           <div className="rounded-xl border border-ink-600/50 bg-ink-900/95 p-2 shadow-card backdrop-blur">
+            {isAdmin ? (
+              <Link
+                href="/admin"
+                onClick={() => setOpen(false)}
+                className={itemClass}
+              >
+                <ShieldCheck size={16} aria-hidden="true" />
+                Админ самбар
+              </Link>
+            ) : null}
             <Link href="/account" onClick={() => setOpen(false)} className={itemClass}>
               <User size={16} aria-hidden="true" />
               {t.myAccount}

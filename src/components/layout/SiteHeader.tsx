@@ -10,7 +10,7 @@ import {
   type HeaderNotification,
 } from "@/components/layout/NotificationBell";
 import { ProfileMenu } from "@/components/layout/ProfileMenu";
-import { getSession } from "@/lib/auth";
+import { getSession, hasRole } from "@/lib/auth";
 import { getGenreCounts, getTopRatedTitles } from "@/lib/catalog";
 import { createClient } from "@/lib/supabase/server";
 import { t } from "@/lib/i18n";
@@ -111,7 +111,11 @@ export async function SiteHeader() {
           {session ? (
             <>
               <NotificationBell notifications={notifications} />
-              <ProfileMenu initial={initial} signOutAction={signOutAction} />
+              <ProfileMenu
+                initial={initial}
+                signOutAction={signOutAction}
+                isAdmin={hasRole(session, "content_manager")}
+              />
             </>
           ) : (
             <>
