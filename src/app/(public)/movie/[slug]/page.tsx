@@ -1,4 +1,4 @@
-import { cache } from "react";
+import { Suspense, cache } from "react";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
@@ -8,26 +8,20 @@ import { ContentRow } from "@/components/catalog/ContentRow";
 import { PosterCard } from "@/components/catalog/PosterCard";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { RowSkeleton } from "@/components/ui/Skeletons";
 import { getSession } from "@/lib/auth";
+import { getMovieBySlug, getMovieCredits, getSimilarMovies } from "@/lib/catalog";
 import { formatDuration, t } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
-import type { CastMember, CrewMember, Movie, SubtitleTrack } from "@/types/db";
+import type { Movie } from "@/types/db";
 import { FavoriteButton } from "../FavoriteButton";
 
 type Params = Promise<{ slug: string }>;
 
 /* ------------------------------ data loaders ------------------------------ */
 
-const getMovie = cache(async (slug: string): Promise<Movie | null> => {
-  const db = await createClient();
-  const { data } = await db
-    .from("movies")
-    .select("*, genres(*), country:countries(*)")
-    .eq("slug", slug)
-    .is("deleted_at", null)
-    .maybeSingle();
-  return (data as unknown as Movie | null) ?? null;
-});
+/** Public movie data — shared "catalog" cache; deduped per request. */
+const getMovie = cache((slug: string): Promise<Movie | null> => getMovieBySlug(slug));
 
 function excerpt(text: string | null, max = 160): string {
   if (!text) return "FLIMIX дээр үзээрэй.";
@@ -138,6 +132,105 @@ function UnavailableNotice() {
   );
 }
 
+function ActionsSkeleton() {
+  return (
+    <>
+      <div className="skeleton h-[50px] w-44 rounded-lg" />
+      <div className="skeleton h-[42px] w-36 rounded-lg" />
+    </>
+  );
+}
+
+/**
+ * Watch CTA + favorites — the user-specific part of the hero. Streams inside
+ * its own Suspense boundary so the page shell paints without waiting for the
+ * cookie-bound session and favorites queries.
+ */
+async function MovieActions({
+  movie,
+  detailPath,
+}: {
+  movie: Pick<Movie, "id" | "is_free" | "trailer_url">;
+  detailPath: string;
+}) {
+  const session = await getSession();
+  let isFavorited = false;
+  if (session) {
+    const db = await createClient();
+    const { data } = await db
+      .from("favorites")
+      .select("id")
+      .eq("user_id", session.userId)
+      .eq("movie_id", movie.id)
+      .maybeSingle();
+    isFavorited = !!data;
+  }
+  const canWatchDirectly = !!session || movie.is_free;
+
+  return (
+    <>
+      {canWatchDirectly ? (
+        <Link
+          href={`/watch/movie/${movie.id}`}
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-royal-500 px-7 py-3 text-base font-medium text-white shadow-accent transition hover:bg-royal-600"
+        >
+          <Play size={18} aria-hidden="true" />
+          {t.watchNow}
+        </Link>
+      ) : (
+        <Link
+          href="/subscribe"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-royal-500 px-7 py-3 text-base font-medium text-white shadow-accent transition hover:bg-royal-600"
+        >
+          {t.choosePlan}
+        </Link>
+      )}
+      {movie.trailer_url ? (
+        <a
+          href="#trailer"
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-ink-600 bg-ink-700/70 px-7 py-3 text-base font-medium text-mist-100 backdrop-blur transition hover:border-royal-500/60"
+        >
+          {t.watchTrailer}
+        </a>
+      ) : null}
+      <FavoriteButton
+        contentType="movie"
+        contentId={movie.id}
+        path={detailPath}
+        initialFavorited={isFavorited}
+      />
+    </>
+  );
+}
+
+async function SimilarMoviesRow({
+  movieId,
+  genreIds,
+}: {
+  movieId: string;
+  genreIds: string[];
+}) {
+  const similar = await getSimilarMovies(movieId, genreIds);
+  if (similar.length === 0) return null;
+  return (
+    <div className="container-fx py-12">
+      <ContentRow title={t.similarTitles}>
+        {similar.map((m) => (
+          <PosterCard
+            key={m.id}
+            href={`/movie/${m.slug}`}
+            title={m.title_mn}
+            posterUrl={m.poster_url}
+            year={m.release_year}
+            ageRating={m.age_rating}
+            isFree={m.is_free}
+          />
+        ))}
+      </ContentRow>
+    </div>
+  );
+}
+
 /* ---------------------------------- page ----------------------------------- */
 
 export default async function MovieDetailPage({ params }: { params: Params }) {
@@ -146,53 +239,10 @@ export default async function MovieDetailPage({ params }: { params: Params }) {
   if (!movie) notFound();
   if (movie.status !== "published") return <UnavailableNotice />;
 
-  const db = await createClient();
-  const session = await getSession();
+  // Public metadata (cast, crew, subtitle languages) — shared "catalog" cache.
+  const { cast, crew, subtitles } = await getMovieCredits(movie.id);
   const genreIds = (movie.genres ?? []).map((g) => g.id);
 
-  const [castRes, crewRes, subsRes, similarRes, favRes] = await Promise.all([
-    db.from("movie_cast").select("cast_members(*)").eq("movie_id", movie.id),
-    db.from("movie_crew").select("crew_members(*)").eq("movie_id", movie.id),
-    db
-      .from("subtitle_tracks")
-      .select("*, language:languages(*)")
-      .eq("content_type", "movie")
-      .eq("content_id", movie.id),
-    genreIds.length
-      ? db
-          .from("movies")
-          .select("*, movie_genres!inner(genre_id)")
-          .in("movie_genres.genre_id", genreIds)
-          .neq("id", movie.id)
-          .eq("status", "published")
-          .is("deleted_at", null)
-          .order("popularity", { ascending: false })
-          .limit(12)
-      : Promise.resolve({ data: [] }),
-    session
-      ? db
-          .from("favorites")
-          .select("id")
-          .eq("user_id", session.userId)
-          .eq("movie_id", movie.id)
-          .maybeSingle()
-      : Promise.resolve({ data: null }),
-  ]);
-
-  const cast = ((castRes.data ?? []) as unknown as { cast_members: CastMember | null }[])
-    .map((r) => r.cast_members)
-    .filter((p): p is CastMember => p !== null);
-  // movie_crew is optional in early schemas — a query error just means "no crew".
-  const crew = crewRes.error
-    ? []
-    : ((crewRes.data ?? []) as unknown as { crew_members: CrewMember | null }[])
-        .map((r) => r.crew_members)
-        .filter((p): p is CrewMember => p !== null);
-  const subtitles = (subsRes.data ?? []) as unknown as SubtitleTrack[];
-  const similar = (similarRes.data ?? []) as unknown as Movie[];
-  const isFavorited = !!favRes.data;
-
-  const canWatchDirectly = !!session || movie.is_free;
   const detailPath = `/movie/${movie.slug}`;
   const embedUrl = movie.trailer_url ? toEmbedUrl(movie.trailer_url) : null;
   const directors = crew.filter((c) => c.role.toLowerCase() === "director");
@@ -274,36 +324,16 @@ export default async function MovieDetailPage({ params }: { params: Params }) {
             ) : null}
 
             <div className="mt-6 flex flex-wrap gap-3">
-              {canWatchDirectly ? (
-                <Link
-                  href={`/watch/movie/${movie.id}`}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-royal-500 px-7 py-3 text-base font-medium text-white shadow-accent transition hover:bg-royal-600"
-                >
-                  <Play size={18} aria-hidden="true" />
-                  {t.watchNow}
-                </Link>
-              ) : (
-                <Link
-                  href="/subscribe"
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-royal-500 px-7 py-3 text-base font-medium text-white shadow-accent transition hover:bg-royal-600"
-                >
-                  {t.choosePlan}
-                </Link>
-              )}
-              {movie.trailer_url ? (
-                <a
-                  href="#trailer"
-                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-ink-600 bg-ink-700/70 px-7 py-3 text-base font-medium text-mist-100 backdrop-blur transition hover:border-royal-500/60"
-                >
-                  {t.watchTrailer}
-                </a>
-              ) : null}
-              <FavoriteButton
-                contentType="movie"
-                contentId={movie.id}
-                path={detailPath}
-                initialFavorited={isFavorited}
-              />
+              <Suspense fallback={<ActionsSkeleton />}>
+                <MovieActions
+                  movie={{
+                    id: movie.id,
+                    is_free: movie.is_free,
+                    trailer_url: movie.trailer_url,
+                  }}
+                  detailPath={detailPath}
+                />
+              </Suspense>
             </div>
 
             {subtitles.length > 0 ? (
@@ -370,23 +400,15 @@ export default async function MovieDetailPage({ params }: { params: Params }) {
       ) : null}
 
       {/* --------------------------- similar titles -------------------------- */}
-      {similar.length > 0 ? (
-        <div className="container-fx py-12">
-          <ContentRow title={t.similarTitles}>
-            {similar.map((m) => (
-              <PosterCard
-                key={m.id}
-                href={`/movie/${m.slug}`}
-                title={m.title_mn}
-                posterUrl={m.poster_url}
-                year={m.release_year}
-                ageRating={m.age_rating}
-                isFree={m.is_free}
-              />
-            ))}
-          </ContentRow>
-        </div>
-      ) : null}
+      <Suspense
+        fallback={
+          <div className="container-fx py-12">
+            <RowSkeleton />
+          </div>
+        }
+      >
+        <SimilarMoviesRow movieId={movie.id} genreIds={genreIds} />
+      </Suspense>
     </div>
   );
 }

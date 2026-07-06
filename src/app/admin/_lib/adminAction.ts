@@ -1,4 +1,5 @@
 import "server-only";
+import { revalidateTag } from "next/cache";
 import { requireRole, type SessionInfo } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { UserRole } from "@/types/db";
@@ -62,6 +63,11 @@ export async function runAdminAction<T>(
       entity_id: out.entityId ?? null,
       details: out.details ?? null,
     });
+    // Admin mutations may change public catalog data (content, homepage
+    // sections, series, rights) — drop the shared "catalog" cache so the
+    // public site picks the change up immediately instead of after the
+    // 60s revalidate window. Over-invalidating is harmless and cheap.
+    revalidateTag("catalog");
     return { ok: true, data: out.data, message: out.message };
   } catch (err) {
     if (isNextControlFlowError(err)) throw err;

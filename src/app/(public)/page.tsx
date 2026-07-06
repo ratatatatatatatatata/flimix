@@ -1,244 +1,155 @@
+import { Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Monitor, Play, Smartphone, Tablet, Tv } from "lucide-react";
 import { ContentRow } from "@/components/catalog/ContentRow";
 import { PosterCard } from "@/components/catalog/PosterCard";
 import { Badge } from "@/components/ui/Badge";
+import { HeroSkeleton, RowSkeleton } from "@/components/ui/Skeletons";
 import { getSession } from "@/lib/auth";
+import {
+  AUTO_SEE_ALL,
+  getAutoSectionContent,
+  getHeroTitle,
+  getLandingFallbackRows,
+  getPublishedSections,
+  heroFromSection,
+  manualSectionItems,
+  parseAutoSource,
+  type CatalogCard,
+} from "@/lib/catalog";
 import { formatMnt, t } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
-import type {
-  HomepageSection,
-  HomepageSectionItem,
-  Movie,
-  Series,
-  WatchProgress,
-} from "@/types/db";
+import type { HomepageSection, Movie, WatchProgress } from "@/types/db";
 
 type Db = Awaited<ReturnType<typeof createClient>>;
 
-/* ---------------------------------- cards ---------------------------------- */
+// The landing page always contains the per-user "Үргэлжлүүлэн үзэх" row
+// (cookie-bound), so it renders per request — exactly as before. Section data
+// itself comes from the shared 60s "catalog" cache, so those renders stay
+// DB-free within the revalidate window.
+export const dynamic = "force-dynamic";
 
-interface CardItem {
-  key: string;
-  href: string;
-  title: string;
-  posterUrl: string | null;
-  year: number | null;
-  ageRating: string | null;
-  isFree?: boolean;
-  progressPercent?: number;
-}
+/* ------------------------------ section access ----------------------------- */
 
-interface RowData {
-  id: string;
-  title: string;
-  seeAllHref?: string;
-  items: CardItem[];
-}
-
-function isLive(x: Pick<Movie, "status" | "deleted_at"> | null | undefined): boolean {
-  return !!x && x.status === "published" && !x.deleted_at;
-}
-
-function movieToCard(m: Movie): CardItem {
-  return {
-    key: `movie-${m.id}`,
-    href: `/movie/${m.slug}`,
-    title: m.title_mn,
-    posterUrl: m.poster_url,
-    year: m.release_year,
-    ageRating: m.age_rating,
-    isFree: m.is_free,
-  };
-}
-
-function seriesToCard(s: Series): CardItem {
-  return {
-    key: `series-${s.id}`,
-    href: `/series/${s.slug}`,
-    title: s.title_mn,
-    posterUrl: s.poster_url,
-    year: s.release_year,
-    ageRating: s.age_rating,
-  };
-}
-
-/* ------------------------------- data loaders ------------------------------ */
-
-async function fetchMovies(
-  db: Db,
-  opts: { sort: "newest" | "popular"; countryCode?: string; limit?: number },
-): Promise<Movie[]> {
-  const select = opts.countryCode ? "*, countries!inner(code)" : "*";
-  let query = db
-    .from("movies")
-    .select(select)
-    .eq("status", "published")
-    .is("deleted_at", null);
-  if (opts.countryCode) query = query.eq("countries.code", opts.countryCode);
-  const ordered =
-    opts.sort === "newest"
-      ? query.order("published_at", { ascending: false, nullsFirst: false })
-      : query.order("popularity", { ascending: false });
-  const { data } = await ordered.limit(opts.limit ?? 14);
-  return (data ?? []) as unknown as Movie[];
-}
-
-async function fetchSeries(
-  db: Db,
-  opts: { sort: "newest" | "popular"; limit?: number },
-): Promise<Series[]> {
-  const query = db
-    .from("series")
-    .select("*")
-    .eq("status", "published")
-    .is("deleted_at", null);
-  const ordered =
-    opts.sort === "newest"
-      ? query.order("published_at", { ascending: false, nullsFirst: false })
-      : query.order("popularity", { ascending: false });
-  const { data } = await ordered.limit(opts.limit ?? 14);
-  return (data ?? []) as unknown as Series[];
-}
-
-type AutoSource = "newest" | "popular" | "mongolian" | "series";
-
-function parseAutoSource(aq: Record<string, unknown> | null): AutoSource {
-  const raw = aq ? (aq.source ?? aq.kind ?? aq.type ?? aq.query) : null;
-  switch (raw) {
-    case "newest":
-    case "new":
-    case "latest":
-      return "newest";
-    case "mongolian":
-    case "mn":
-      return "mongolian";
-    case "series":
-      return "series";
-    default:
-      return "popular";
-  }
-}
-
-const AUTO_SEE_ALL: Record<AutoSource, string> = {
-  newest: "/browse?type=movie&sort=newest",
-  popular: "/browse?sort=popular",
-  mongolian: "/browse?country=MN",
-  series: "/browse?type=series",
-};
-
-async function runAutoQuery(db: Db, source: AutoSource): Promise<CardItem[]> {
-  switch (source) {
-    case "newest":
-      return (await fetchMovies(db, { sort: "newest" })).map(movieToCard);
-    case "mongolian":
-      return (await fetchMovies(db, { sort: "popular", countryCode: "MN" })).map(movieToCard);
-    case "series":
-      return (await fetchSeries(db, { sort: "popular" })).map(seriesToCard);
-    default:
-      return (await fetchMovies(db, { sort: "popular" })).map(movieToCard);
-  }
-}
-
-function manualItems(section: HomepageSection): CardItem[] {
-  const items: HomepageSectionItem[] = [...(section.items ?? [])].sort(
-    (a, b) => a.sort_order - b.sort_order,
-  );
-  const cards: CardItem[] = [];
-  for (const item of items) {
-    if (item.content_type === "movie" && isLive(item.movie)) {
-      cards.push(movieToCard(item.movie as Movie));
-    } else if (item.content_type === "series" && isLive(item.series)) {
-      cards.push(seriesToCard(item.series as Series));
-    }
-  }
-  return cards;
-}
-
-async function resolveSection(db: Db, section: HomepageSection): Promise<RowData> {
-  if (section.query_type === "auto") {
-    const source = parseAutoSource(section.auto_query);
-    return {
-      id: section.id,
-      title: section.title_mn,
-      seeAllHref: AUTO_SEE_ALL[source],
-      items: await runAutoQuery(db, source),
-    };
-  }
-  return { id: section.id, title: section.title_mn, items: manualItems(section) };
-}
-
-/* ----------------------------------- hero ---------------------------------- */
-
-interface HeroData {
-  title: string;
-  originalTitle: string | null;
-  description: string | null;
-  backdropUrl: string | null;
-  href: string;
-  year: number | null;
-  ageRating: string | null;
-  genres: string[];
-  isFree: boolean;
-}
-
-function heroFromMovie(m: Movie): HeroData {
-  return {
-    title: m.title_mn,
-    originalTitle: m.original_title,
-    description: m.description_mn,
-    backdropUrl: m.backdrop_url,
-    href: `/movie/${m.slug}`,
-    year: m.release_year,
-    ageRating: m.age_rating,
-    genres: (m.genres ?? []).map((g) => g.name_mn).slice(0, 3),
-    isFree: m.is_free,
-  };
-}
-
-function heroFromSeries(s: Series): HeroData {
-  return {
-    title: s.title_mn,
-    originalTitle: s.original_title,
-    description: s.description_mn,
-    backdropUrl: s.backdrop_url,
-    href: `/series/${s.slug}`,
-    year: s.release_year,
-    ageRating: s.age_rating,
-    genres: (s.genres ?? []).map((g) => g.name_mn).slice(0, 3),
-    isFree: false,
-  };
-}
-
-async function pickHero(db: Db, heroSection: HomepageSection | undefined): Promise<HeroData | null> {
-  if (heroSection) {
-    const items = [...(heroSection.items ?? [])].sort((a, b) => a.sort_order - b.sort_order);
-    for (const item of items) {
-      if (item.content_type === "movie" && isLive(item.movie)) {
-        return heroFromMovie(item.movie as Movie);
-      }
-      if (item.content_type === "series" && isLive(item.series)) {
-        return heroFromSeries(item.series as Series);
-      }
-    }
-  }
-  const { data } = await db
-    .from("movies")
-    .select("*, genres(*)")
-    .eq("status", "published")
-    .is("deleted_at", null)
-    .not("backdrop_url", "is", null)
-    .order("popularity", { ascending: false })
-    .limit(1);
-  const movie = ((data ?? []) as unknown as Movie[])[0];
-  return movie ? heroFromMovie(movie) : null;
+/**
+ * Published sections visible right now on web. The list itself comes from the
+ * shared "catalog" cache; the time-window check runs per request.
+ */
+async function getVisibleSections(): Promise<HomepageSection[]> {
+  const sections = await getPublishedSections();
+  const now = Date.now();
+  return sections.filter((s) => {
+    const fromOk = !s.visible_from || Date.parse(s.visible_from) <= now;
+    const untilOk = !s.visible_until || Date.parse(s.visible_until) >= now;
+    const deviceOk =
+      !s.device_visibility ||
+      s.device_visibility.length === 0 ||
+      s.device_visibility.includes("web");
+    return fromOk && untilOk && deviceOk;
+  });
 }
 
 function excerpt(text: string | null, max = 220): string | null {
   if (!text) return null;
   if (text.length <= max) return text;
   return `${text.slice(0, max).trimEnd()}…`;
+}
+
+/* ----------------------------------- hero ---------------------------------- */
+
+/** Streams independently: CMS hero section first, cached fallback otherwise. */
+async function HeroSection() {
+  const sections = await getVisibleSections();
+  const heroCms = sections.find((s) => s.layout === "hero");
+  const hero = heroFromSection(heroCms) ?? (await getHeroTitle());
+  const heroDescription = hero ? excerpt(hero.description) : null;
+
+  if (!hero) {
+    return (
+      <section className="relative overflow-hidden bg-gradient-to-b from-ink-900 to-ink-950">
+        <div className="container-fx animate-fade-in py-28 text-center">
+          <h1 className="mx-auto max-w-2xl font-display text-3xl font-bold text-white sm:text-5xl">
+            Монгол болон дэлхийн шилдэг кино нэг дор
+          </h1>
+          <p className="mx-auto mt-4 max-w-xl text-mist-300">
+            Хадмал орчуулгатай, өндөр чанартай стриминг — сард ердөө {formatMnt(14900)}.
+          </p>
+          <div className="mt-8 flex justify-center gap-3">
+            <Link
+              href="/subscribe"
+              className="rounded-lg bg-brand-gradient px-7 py-3.5 font-medium text-white shadow-accent transition hover:brightness-110"
+            >
+              {t.choosePlan}
+            </Link>
+            <Link
+              href="/browse"
+              className="rounded-lg border border-ink-600 bg-ink-700/70 px-7 py-3.5 font-medium text-mist-100 transition hover:border-royal-500/60"
+            >
+              {t.categories}
+            </Link>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="relative flex min-h-[72vh] items-end overflow-hidden">
+      {hero.backdropUrl ? (
+        <Image
+          src={hero.backdropUrl}
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover"
+        />
+      ) : (
+        <div className="absolute inset-0 bg-gradient-to-br from-royal-700/25 via-ink-900 to-ink-950" />
+      )}
+      <div className="absolute inset-0 bg-hero-fade" aria-hidden="true" />
+      <div className="container-fx relative z-10 animate-fade-in pb-14 pt-44">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.25em] text-royal-300">
+          FLIMIX онцолж байна
+        </p>
+        <h1 className="max-w-2xl font-display text-3xl font-bold leading-tight text-white sm:text-5xl">
+          {hero.title}
+        </h1>
+        {hero.originalTitle && hero.originalTitle !== hero.title ? (
+          <p className="mt-2 text-sm text-mist-400">{hero.originalTitle}</p>
+        ) : null}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          {hero.year ? <Badge>{hero.year}</Badge> : null}
+          {hero.ageRating ? <Badge tone="accent">{hero.ageRating}</Badge> : null}
+          {hero.genres.map((g) => (
+            <Badge key={g}>{g}</Badge>
+          ))}
+          {hero.isFree ? <Badge tone="success">Үнэгүй</Badge> : null}
+        </div>
+        {heroDescription ? (
+          <p className="mt-4 max-w-xl text-sm leading-relaxed text-mist-300 sm:text-base">
+            {heroDescription}
+          </p>
+        ) : null}
+        <div className="mt-7 flex flex-wrap gap-3">
+          <Link
+            href={hero.href}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-gradient px-7 py-3.5 text-base font-medium text-white shadow-accent transition hover:brightness-110"
+          >
+            <Play size={18} aria-hidden="true" />
+            {t.watchNow}
+          </Link>
+          <Link
+            href={`${hero.href}#trailer`}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-ink-600 bg-ink-700/70 px-7 py-3.5 text-base font-medium text-mist-100 backdrop-blur transition hover:border-royal-500/60"
+          >
+            {t.watchTrailer}
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 /* ---------------------------- continue watching ---------------------------- */
@@ -254,7 +165,7 @@ interface EpisodeJoinRow {
   } | null;
 }
 
-async function fetchContinueWatching(db: Db, userId: string): Promise<CardItem[]> {
+async function fetchContinueWatching(db: Db, userId: string): Promise<CatalogCard[]> {
   const { data: progressData } = await db
     .from("watch_progress")
     .select("*")
@@ -295,7 +206,7 @@ async function fetchContinueWatching(db: Db, userId: string): Promise<CardItem[]
     ((episodesRes.data ?? []) as unknown as EpisodeJoinRow[]).map((e) => [e.id, e]),
   );
 
-  const cards: CardItem[] = [];
+  const cards: CatalogCard[] = [];
   for (const row of rows) {
     const percent =
       row.duration_seconds > 0
@@ -328,6 +239,104 @@ async function fetchContinueWatching(db: Db, userId: string): Promise<CardItem[]
     }
   }
   return cards;
+}
+
+/**
+ * Per-user row — the only landing query bound to cookies. Lives in its own
+ * Suspense boundary so it never blocks the shell or the catalog rows.
+ */
+async function ContinueWatchingRow() {
+  const session = await getSession();
+  if (!session) return null;
+  const db = await createClient();
+  const cards = await fetchContinueWatching(db, session.userId);
+  if (cards.length === 0) return null;
+  return (
+    <ContentRow title={t.continueWatching} seeAllHref="/account/history">
+      {cards.map((c) => (
+        <PosterCard
+          key={c.key}
+          href={c.href}
+          title={c.title}
+          posterUrl={c.posterUrl}
+          year={c.year}
+          ageRating={c.ageRating}
+          progressPercent={c.progressPercent}
+        />
+      ))}
+    </ContentRow>
+  );
+}
+
+/* ------------------------------ catalog rows ------------------------------- */
+
+/** One CMS section — resolves its own content so each row streams on its own. */
+async function SectionRow({ section }: { section: HomepageSection }) {
+  let items: CatalogCard[];
+  let seeAllHref: string | undefined;
+  if (section.query_type === "auto") {
+    const source = parseAutoSource(section.auto_query);
+    seeAllHref = AUTO_SEE_ALL[source];
+    items = await getAutoSectionContent(source);
+  } else {
+    items = manualSectionItems(section);
+  }
+  if (items.length === 0) return null;
+  return (
+    <ContentRow title={section.title_mn} seeAllHref={seeAllHref}>
+      {items.map((c) => (
+        <PosterCard
+          key={c.key}
+          href={c.href}
+          title={c.title}
+          posterUrl={c.posterUrl}
+          year={c.year}
+          ageRating={c.ageRating}
+          isFree={c.isFree}
+        />
+      ))}
+    </ContentRow>
+  );
+}
+
+/** Graceful fallback: no CMS sections → rows built straight from the catalog. */
+async function FallbackRows() {
+  const rows = await getLandingFallbackRows();
+  return (
+    <>
+      {rows.map((row) => (
+        <ContentRow key={row.id} title={row.title} seeAllHref={row.seeAllHref}>
+          {row.items.map((c) => (
+            <PosterCard
+              key={c.key}
+              href={c.href}
+              title={c.title}
+              posterUrl={c.posterUrl}
+              year={c.year}
+              ageRating={c.ageRating}
+              isFree={c.isFree}
+            />
+          ))}
+        </ContentRow>
+      ))}
+    </>
+  );
+}
+
+/** Section list (cached) → one independent Suspense boundary per row. */
+async function CatalogSections() {
+  const sections = await getVisibleSections();
+  const rowSections = sections.filter((s) => s.layout !== "hero");
+  if (rowSections.length === 0) return <FallbackRows />;
+  return (
+    <>
+      {rowSections.map((section) => (
+        <Suspense key={section.id} fallback={<RowSkeleton />}>
+          <SectionRow section={section} />
+        </Suspense>
+      ))}
+    </>
+  );
 }
 
 /* ---------------------------------- page ----------------------------------- */
@@ -366,172 +375,35 @@ const DEVICES: { icon: React.ComponentType<{ size?: number; className?: string }
   { icon: Tv, label: "Ухаалаг ТВ", desc: "WebOS, Tizen, Android TV хөтөч" },
 ];
 
-export default async function LandingPage() {
-  const db = await createClient();
-  const session = await getSession();
-
-  const { data: sectionsData } = await db
-    .from("homepage_sections")
-    .select("*, items:homepage_section_items(*, movie:movies(*, genres(*)), series:series(*, genres(*)))")
-    .eq("status", "published")
-    .order("sort_order", { ascending: true });
-
-  const now = Date.now();
-  const sections = ((sectionsData ?? []) as unknown as HomepageSection[]).filter((s) => {
-    const fromOk = !s.visible_from || Date.parse(s.visible_from) <= now;
-    const untilOk = !s.visible_until || Date.parse(s.visible_until) >= now;
-    const deviceOk =
-      !s.device_visibility || s.device_visibility.length === 0 || s.device_visibility.includes("web");
-    return fromOk && untilOk && deviceOk;
-  });
-
-  const heroSection = sections.find((s) => s.layout === "hero");
-  const rowSections = sections.filter((s) => s.layout !== "hero");
-
-  const [hero, continueWatching, sectionRows] = await Promise.all([
-    pickHero(db, heroSection),
-    session ? fetchContinueWatching(db, session.userId) : Promise.resolve([] as CardItem[]),
-    Promise.all(rowSections.map((s) => resolveSection(db, s))),
-  ]);
-
-  let rows: RowData[] = sectionRows.filter((r) => r.items.length > 0);
-
-  // Graceful fallback: no CMS sections → build rows straight from the catalog.
-  if (rows.length === 0) {
-    const [newest, popular, mongolian, seriesList] = await Promise.all([
-      fetchMovies(db, { sort: "newest" }),
-      fetchMovies(db, { sort: "popular" }),
-      fetchMovies(db, { sort: "popular", countryCode: "MN" }),
-      fetchSeries(db, { sort: "popular" }),
-    ]);
-    rows = [
-      { id: "fb-newest", title: t.newReleases, seeAllHref: AUTO_SEE_ALL.newest, items: newest.map(movieToCard) },
-      { id: "fb-popular", title: t.trending, seeAllHref: AUTO_SEE_ALL.popular, items: popular.map(movieToCard) },
-      { id: "fb-mn", title: t.mongolianCinema, seeAllHref: AUTO_SEE_ALL.mongolian, items: mongolian.map(movieToCard) },
-      { id: "fb-series", title: t.series, seeAllHref: AUTO_SEE_ALL.series, items: seriesList.map(seriesToCard) },
-    ].filter((r) => r.items.length > 0);
-  }
-
-  const heroDescription = hero ? excerpt(hero.description) : null;
-
+/**
+ * Landing page shell — renders instantly. Every data-driven section (hero,
+ * continue-watching, each CMS row) streams into its own Suspense boundary;
+ * static marketing sections need no data and paint immediately.
+ */
+export default function LandingPage() {
   return (
     <div>
       {/* ------------------------------- HERO ------------------------------- */}
-      {hero ? (
-        <section className="relative flex min-h-[72vh] items-end overflow-hidden">
-          {hero.backdropUrl ? (
-            <Image
-              src={hero.backdropUrl}
-              alt=""
-              fill
-              priority
-              sizes="100vw"
-              className="object-cover"
-            />
-          ) : (
-            <div className="absolute inset-0 bg-gradient-to-br from-royal-700/25 via-ink-900 to-ink-950" />
-          )}
-          <div className="absolute inset-0 bg-hero-fade" aria-hidden="true" />
-          <div className="container-fx relative z-10 animate-fade-in pb-14 pt-44">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.25em] text-royal-300">
-              FLIMIX онцолж байна
-            </p>
-            <h1 className="max-w-2xl font-display text-3xl font-bold leading-tight text-white sm:text-5xl">
-              {hero.title}
-            </h1>
-            {hero.originalTitle && hero.originalTitle !== hero.title ? (
-              <p className="mt-2 text-sm text-mist-400">{hero.originalTitle}</p>
-            ) : null}
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              {hero.year ? <Badge>{hero.year}</Badge> : null}
-              {hero.ageRating ? <Badge tone="accent">{hero.ageRating}</Badge> : null}
-              {hero.genres.map((g) => (
-                <Badge key={g}>{g}</Badge>
-              ))}
-              {hero.isFree ? <Badge tone="success">Үнэгүй</Badge> : null}
-            </div>
-            {heroDescription ? (
-              <p className="mt-4 max-w-xl text-sm leading-relaxed text-mist-300 sm:text-base">
-                {heroDescription}
-              </p>
-            ) : null}
-            <div className="mt-7 flex flex-wrap gap-3">
-              <Link
-                href={hero.href}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-gradient px-7 py-3.5 text-base font-medium text-white shadow-accent transition hover:brightness-110"
-              >
-                <Play size={18} aria-hidden="true" />
-                {t.watchNow}
-              </Link>
-              <Link
-                href={`${hero.href}#trailer`}
-                className="inline-flex items-center justify-center gap-2 rounded-lg border border-ink-600 bg-ink-700/70 px-7 py-3.5 text-base font-medium text-mist-100 backdrop-blur transition hover:border-royal-500/60"
-              >
-                {t.watchTrailer}
-              </Link>
-            </div>
-          </div>
-        </section>
-      ) : (
-        <section className="relative overflow-hidden bg-gradient-to-b from-ink-900 to-ink-950">
-          <div className="container-fx animate-fade-in py-28 text-center">
-            <h1 className="mx-auto max-w-2xl font-display text-3xl font-bold text-white sm:text-5xl">
-              Монгол болон дэлхийн шилдэг кино нэг дор
-            </h1>
-            <p className="mx-auto mt-4 max-w-xl text-mist-300">
-              Хадмал орчуулгатай, өндөр чанартай стриминг — сард ердөө {formatMnt(14900)}.
-            </p>
-            <div className="mt-8 flex justify-center gap-3">
-              <Link
-                href="/subscribe"
-                className="rounded-lg bg-brand-gradient px-7 py-3.5 font-medium text-white shadow-accent transition hover:brightness-110"
-              >
-                {t.choosePlan}
-              </Link>
-              <Link
-                href="/browse"
-                className="rounded-lg border border-ink-600 bg-ink-700/70 px-7 py-3.5 font-medium text-mist-100 transition hover:border-royal-500/60"
-              >
-                {t.categories}
-              </Link>
-            </div>
-          </div>
-        </section>
-      )}
+      <Suspense fallback={<HeroSkeleton />}>
+        <HeroSection />
+      </Suspense>
 
       {/* --------------------------- CONTENT ROWS --------------------------- */}
       <div className="container-fx space-y-12 py-12">
-        {session && continueWatching.length > 0 ? (
-          <ContentRow title={t.continueWatching} seeAllHref="/account/history">
-            {continueWatching.map((c) => (
-              <PosterCard
-                key={c.key}
-                href={c.href}
-                title={c.title}
-                posterUrl={c.posterUrl}
-                year={c.year}
-                ageRating={c.ageRating}
-                progressPercent={c.progressPercent}
-              />
-            ))}
-          </ContentRow>
-        ) : null}
+        <Suspense fallback={<RowSkeleton />}>
+          <ContinueWatchingRow />
+        </Suspense>
 
-        {rows.map((row) => (
-          <ContentRow key={row.id} title={row.title} seeAllHref={row.seeAllHref}>
-            {row.items.map((c) => (
-              <PosterCard
-                key={c.key}
-                href={c.href}
-                title={c.title}
-                posterUrl={c.posterUrl}
-                year={c.year}
-                ageRating={c.ageRating}
-                isFree={c.isFree}
-              />
-            ))}
-          </ContentRow>
-        ))}
+        <Suspense
+          fallback={
+            <>
+              <RowSkeleton />
+              <RowSkeleton />
+            </>
+          }
+        >
+          <CatalogSections />
+        </Suspense>
       </div>
 
       {/* ---------------------------- APP PROMO ----------------------------- */}

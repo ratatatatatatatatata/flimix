@@ -1,4 +1,4 @@
-import { cache } from "react";
+import { Suspense, cache } from "react";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
@@ -8,32 +8,44 @@ import { ContentRow } from "@/components/catalog/ContentRow";
 import { PosterCard } from "@/components/catalog/PosterCard";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { RowSkeleton } from "@/components/ui/Skeletons";
 import { getSession } from "@/lib/auth";
+import { getSeriesBySlug, getSeriesCast, getSimilarSeries } from "@/lib/catalog";
 import { formatDuration, t } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
-import type {
-  CastMember,
-  Episode,
-  Season,
-  Series,
-  WatchProgress,
-} from "@/types/db";
+import type { Episode, Season, Series, WatchProgress } from "@/types/db";
 import { FavoriteButton } from "../../movie/FavoriteButton";
+import { SeasonSelector } from "./SeasonSelector";
 
 type Params = Promise<{ slug: string }>;
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 /* ------------------------------ data loaders ------------------------------ */
 
-const getSeries = cache(async (slug: string): Promise<Series | null> => {
+/** Public series data — shared "catalog" cache; deduped per request. */
+const getSeries = cache((slug: string): Promise<Series | null> => getSeriesBySlug(slug));
+
+/**
+ * Current user's episode progress for this series — cookie-bound, per request.
+ * Keyed by slug so the actions CTA and the episode list share one fetch.
+ */
+const getEpisodeProgress = cache(async (slug: string): Promise<WatchProgress[]> => {
+  const session = await getSession();
+  if (!session) return [];
+  const series = await getSeries(slug);
+  if (!series) return [];
+  const episodeIds = (series.seasons ?? []).flatMap((s) =>
+    (s.episodes ?? []).map((e) => e.id),
+  );
+  if (episodeIds.length === 0) return [];
   const db = await createClient();
   const { data } = await db
-    .from("series")
-    .select("*, genres(*), country:countries(*), seasons(*, episodes(*))")
-    .eq("slug", slug)
-    .is("deleted_at", null)
-    .maybeSingle();
-  return (data as unknown as Series | null) ?? null;
+    .from("watch_progress")
+    .select("*")
+    .eq("user_id", session.userId)
+    .eq("content_type", "episode")
+    .in("content_id", episodeIds);
+  return (data ?? []) as unknown as WatchProgress[];
 });
 
 function excerpt(text: string | null, max = 160): string {
@@ -79,6 +91,21 @@ interface EpisodeProgress {
   completed: boolean;
 }
 
+function buildProgressMap(rows: WatchProgress[]): Map<string, EpisodeProgress> {
+  return new Map(
+    rows.map((p) => [
+      p.content_id,
+      {
+        percent:
+          p.duration_seconds > 0
+            ? Math.min(Math.round((p.progress_seconds / p.duration_seconds) * 100), 100)
+            : 0,
+        completed: p.completed,
+      },
+    ]),
+  );
+}
+
 function UnavailableNotice() {
   return (
     <div className="container-fx py-24">
@@ -98,6 +125,248 @@ function UnavailableNotice() {
   );
 }
 
+/* --------------------------- user-bound sub-views --------------------------- */
+
+function ActionsSkeleton() {
+  return (
+    <>
+      <div className="skeleton h-[50px] w-48 rounded-lg" />
+      <div className="skeleton h-[42px] w-36 rounded-lg" />
+    </>
+  );
+}
+
+/**
+ * Watch CTA + favorites — the user-specific part of the hero. Streams inside
+ * its own Suspense boundary so the page shell paints without waiting for the
+ * cookie-bound session, progress and favorites queries.
+ */
+async function SeriesActions({ slug, detailPath }: { slug: string; detailPath: string }) {
+  const series = await getSeries(slug);
+  if (!series) return null;
+  const seasons = orderedSeasons(series);
+
+  const session = await getSession();
+  const db = await createClient();
+  const [progressRows, favRes] = await Promise.all([
+    getEpisodeProgress(slug),
+    session
+      ? db
+          .from("favorites")
+          .select("id")
+          .eq("user_id", session.userId)
+          .eq("series_id", series.id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  const progressMap = buildProgressMap(progressRows);
+  const isFavorited = !!favRes.data;
+
+  // "Next episode": first episode (season/episode order) not yet completed.
+  let nextEpisode: { episode: Episode; seasonNumber: number } | null = null;
+  for (const season of seasons) {
+    for (const ep of season.episodes) {
+      if (!progressMap.get(ep.id)?.completed) {
+        nextEpisode = { episode: ep, seasonNumber: season.season_number };
+        break;
+      }
+    }
+    if (nextEpisode) break;
+  }
+  const hasAnyProgress = progressRows.length > 0;
+
+  return (
+    <>
+      {session && nextEpisode ? (
+        <Link
+          href={`/watch/episode/${nextEpisode.episode.id}`}
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-royal-500 px-7 py-3 text-base font-medium text-white shadow-accent transition hover:bg-royal-600"
+        >
+          <Play size={18} aria-hidden="true" />
+          {hasAnyProgress
+            ? `${t.continueWatching} S${nextEpisode.seasonNumber}A${nextEpisode.episode.episode_number}`
+            : t.watchNow}
+        </Link>
+      ) : (
+        <Link
+          href="/subscribe"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-royal-500 px-7 py-3 text-base font-medium text-white shadow-accent transition hover:bg-royal-600"
+        >
+          {t.choosePlan}
+        </Link>
+      )}
+      {series.trailer_url ? (
+        <a
+          href="#trailer"
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-ink-600 bg-ink-700/70 px-7 py-3 text-base font-medium text-mist-100 backdrop-blur transition hover:border-royal-500/60"
+        >
+          {t.watchTrailer}
+        </a>
+      ) : null}
+      <FavoriteButton
+        contentType="series"
+        contentId={series.id}
+        path={detailPath}
+        initialFavorited={isFavorited}
+      />
+    </>
+  );
+}
+
+function EpisodeListSkeleton({ count }: { count: number }) {
+  return (
+    <ol className="mt-6 space-y-3" aria-hidden="true">
+      {Array.from({ length: Math.min(Math.max(count, 1), 6) }).map((_, i) => (
+        <li key={i} className="card-surface flex gap-4 p-3 sm:p-4">
+          <div className="skeleton aspect-video w-32 shrink-0 rounded-lg sm:w-44" />
+          <div className="min-w-0 flex-1 space-y-2.5 py-1">
+            <div className="skeleton h-4 w-1/2" />
+            <div className="skeleton h-3 w-3/4" />
+            <div className="skeleton h-3 w-16" />
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** Episode list for the selected season, decorated with per-user progress. */
+async function EpisodeList({ slug, episodes }: { slug: string; episodes: Episode[] }) {
+  const progressMap = buildProgressMap(await getEpisodeProgress(slug));
+
+  return (
+    <ol className="mt-6 space-y-3">
+      {episodes.map((ep) => {
+        const progress = progressMap.get(ep.id);
+        return (
+          <li key={ep.id}>
+            <Link
+              href={`/watch/episode/${ep.id}`}
+              className="card-surface group flex gap-4 p-3 transition hover:border-royal-500/50 sm:p-4"
+            >
+              <div className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-lg bg-ink-700 sm:w-44">
+                {ep.poster_url ? (
+                  <Image
+                    src={ep.poster_url}
+                    alt=""
+                    fill
+                    sizes="(max-width: 640px) 128px, 176px"
+                    className="object-cover"
+                  />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center text-lg font-semibold text-mist-500">
+                    {ep.episode_number}
+                  </span>
+                )}
+                <span className="absolute inset-0 flex items-center justify-center bg-ink-950/40 opacity-0 transition group-hover:opacity-100">
+                  <Play size={28} className="text-white" aria-hidden="true" />
+                </span>
+                {progress && progress.percent > 0 ? (
+                  <span className="absolute inset-x-0 bottom-0 h-1 bg-ink-700">
+                    <span
+                      className="block h-full bg-royal-500"
+                      style={{ width: `${progress.percent}%` }}
+                    />
+                  </span>
+                ) : null}
+              </div>
+              <div className="min-w-0 flex-1 py-1">
+                <p className="truncate font-medium text-mist-100 group-hover:text-white">
+                  <span className="mr-2 text-mist-500">{ep.episode_number}.</span>
+                  {ep.title_mn}
+                </p>
+                {ep.description_mn ? (
+                  <p className="mt-1.5 line-clamp-2 text-sm text-mist-400">
+                    {ep.description_mn}
+                  </p>
+                ) : null}
+                <p className="mt-2 text-xs text-mist-500">
+                  {ep.duration_seconds ? formatDuration(ep.duration_seconds) : null}
+                  {progress?.completed ? " · Үзсэн" : null}
+                </p>
+              </div>
+            </Link>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/* ----------------------------- catalog sub-views ---------------------------- */
+
+async function CastSection({ seriesId }: { seriesId: string }) {
+  const cast = await getSeriesCast(seriesId);
+  if (cast.length === 0) return null;
+  return (
+    <section className="container-fx py-12">
+      <h2 className="font-display text-lg font-semibold text-white sm:text-xl">
+        {t.cast}
+      </h2>
+      <div className="row-scroll -mx-4 mt-5 flex gap-4 overflow-x-auto px-4 pb-2">
+        {cast.map((p) => (
+          <div key={p.id} className="w-24 shrink-0 text-center">
+            <div className="relative mx-auto h-20 w-20 overflow-hidden rounded-full border border-ink-600 bg-ink-700">
+              {p.photo_url ? (
+                <Image
+                  src={p.photo_url}
+                  alt={p.name}
+                  fill
+                  sizes="80px"
+                  className="object-cover"
+                />
+              ) : (
+                <span
+                  className="flex h-full w-full items-center justify-center text-lg font-semibold text-mist-400"
+                  aria-hidden="true"
+                >
+                  {p.name
+                    .split(/\s+/)
+                    .filter(Boolean)
+                    .map((w) => w[0])
+                    .slice(0, 2)
+                    .join("")
+                    .toUpperCase()}
+                </span>
+              )}
+            </div>
+            <p className="mt-2 truncate text-sm text-mist-100" title={p.name}>
+              {p.name}
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+async function SimilarSeriesRow({
+  seriesId,
+  genreIds,
+}: {
+  seriesId: string;
+  genreIds: string[];
+}) {
+  const similar = await getSimilarSeries(seriesId, genreIds);
+  if (similar.length === 0) return null;
+  return (
+    <div className="container-fx py-12">
+      <ContentRow title={t.similarTitles}>
+        {similar.map((s) => (
+          <PosterCard
+            key={s.id}
+            href={`/series/${s.slug}`}
+            title={s.title_mn}
+            posterUrl={s.poster_url}
+            year={s.release_year}
+            ageRating={s.age_rating}
+          />
+        ))}
+      </ContentRow>
+    </div>
+  );
+}
+
 /* ---------------------------------- page ----------------------------------- */
 
 export default async function SeriesDetailPage({
@@ -112,75 +381,8 @@ export default async function SeriesDetailPage({
   if (!series) notFound();
   if (series.status !== "published") return <UnavailableNotice />;
 
-  const db = await createClient();
-  const session = await getSession();
   const seasons = orderedSeasons(series);
-  const allEpisodeIds = seasons.flatMap((s) => s.episodes.map((e) => e.id));
   const genreIds = (series.genres ?? []).map((g) => g.id);
-
-  const [castRes, progressRes, similarRes, favRes] = await Promise.all([
-    db.from("series_cast").select("cast_members(*)").eq("series_id", series.id),
-    session && allEpisodeIds.length
-      ? db
-          .from("watch_progress")
-          .select("*")
-          .eq("user_id", session.userId)
-          .eq("content_type", "episode")
-          .in("content_id", allEpisodeIds)
-      : Promise.resolve({ data: [] }),
-    genreIds.length
-      ? db
-          .from("series")
-          .select("*, series_genres!inner(genre_id)")
-          .in("series_genres.genre_id", genreIds)
-          .neq("id", series.id)
-          .eq("status", "published")
-          .is("deleted_at", null)
-          .order("popularity", { ascending: false })
-          .limit(12)
-      : Promise.resolve({ data: [] }),
-    session
-      ? db
-          .from("favorites")
-          .select("id")
-          .eq("user_id", session.userId)
-          .eq("series_id", series.id)
-          .maybeSingle()
-      : Promise.resolve({ data: null }),
-  ]);
-
-  const cast = ((castRes.data ?? []) as unknown as { cast_members: CastMember | null }[])
-    .map((r) => r.cast_members)
-    .filter((p): p is CastMember => p !== null);
-  const progressRows = (progressRes.data ?? []) as unknown as WatchProgress[];
-  const similar = (similarRes.data ?? []) as unknown as Series[];
-  const isFavorited = !!favRes.data;
-
-  const progressMap = new Map<string, EpisodeProgress>(
-    progressRows.map((p) => [
-      p.content_id,
-      {
-        percent:
-          p.duration_seconds > 0
-            ? Math.min(Math.round((p.progress_seconds / p.duration_seconds) * 100), 100)
-            : 0,
-        completed: p.completed,
-      },
-    ]),
-  );
-
-  // "Next episode": first episode (season/episode order) not yet completed.
-  let nextEpisode: { episode: Episode; seasonNumber: number } | null = null;
-  for (const season of seasons) {
-    for (const ep of season.episodes) {
-      if (!progressMap.get(ep.id)?.completed) {
-        nextEpisode = { episode: ep, seasonNumber: season.season_number };
-        break;
-      }
-    }
-    if (nextEpisode) break;
-  }
-  const hasAnyProgress = progressRows.length > 0;
 
   // Season selector via ?season=N (server rendered).
   const seasonParam = Number(Array.isArray(sp.season) ? sp.season[0] : sp.season);
@@ -257,38 +459,9 @@ export default async function SeriesDetailPage({
             ) : null}
 
             <div className="mt-6 flex flex-wrap gap-3">
-              {session && nextEpisode ? (
-                <Link
-                  href={`/watch/episode/${nextEpisode.episode.id}`}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-royal-500 px-7 py-3 text-base font-medium text-white shadow-accent transition hover:bg-royal-600"
-                >
-                  <Play size={18} aria-hidden="true" />
-                  {hasAnyProgress
-                    ? `${t.continueWatching} S${nextEpisode.seasonNumber}A${nextEpisode.episode.episode_number}`
-                    : t.watchNow}
-                </Link>
-              ) : (
-                <Link
-                  href="/subscribe"
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-royal-500 px-7 py-3 text-base font-medium text-white shadow-accent transition hover:bg-royal-600"
-                >
-                  {t.choosePlan}
-                </Link>
-              )}
-              {series.trailer_url ? (
-                <a
-                  href="#trailer"
-                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-ink-600 bg-ink-700/70 px-7 py-3 text-base font-medium text-mist-100 backdrop-blur transition hover:border-royal-500/60"
-                >
-                  {t.watchTrailer}
-                </a>
-              ) : null}
-              <FavoriteButton
-                contentType="series"
-                contentId={series.id}
-                path={detailPath}
-                initialFavorited={isFavorited}
-              />
+              <Suspense fallback={<ActionsSkeleton />}>
+                <SeriesActions slug={slug} detailPath={detailPath} />
+              </Suspense>
             </div>
           </div>
         </div>
@@ -296,137 +469,29 @@ export default async function SeriesDetailPage({
 
       {/* ------------------------------ episodes ----------------------------- */}
       <section className="container-fx py-12">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <h2 className="font-display text-lg font-semibold text-white sm:text-xl">
-            {t.episode}
-          </h2>
-          {seasons.length > 1 ? (
-            <nav className="row-scroll flex gap-2 overflow-x-auto" aria-label={t.season}>
-              {seasons.map((s) => {
-                const active = selectedSeason?.id === s.id;
-                return (
-                  <Link
-                    key={s.id}
-                    href={`${detailPath}?season=${s.season_number}`}
-                    aria-current={active ? "page" : undefined}
-                    className={`shrink-0 rounded-full border px-4 py-1.5 text-sm transition ${
-                      active
-                        ? "border-royal-500 bg-royal-500 font-medium text-white"
-                        : "border-ink-600 bg-ink-800 text-mist-300 hover:border-royal-500/50 hover:text-white"
-                    }`}
-                  >
-                    {t.season} {s.season_number}
-                  </Link>
-                );
-              })}
-            </nav>
-          ) : null}
-        </div>
-
-        {selectedSeason ? (
-          <ol className="mt-6 space-y-3">
-            {selectedSeason.episodes.map((ep) => {
-              const progress = progressMap.get(ep.id);
-              return (
-                <li key={ep.id}>
-                  <Link
-                    href={`/watch/episode/${ep.id}`}
-                    className="card-surface group flex gap-4 p-3 transition hover:border-royal-500/50 sm:p-4"
-                  >
-                    <div className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-lg bg-ink-700 sm:w-44">
-                      {ep.poster_url ? (
-                        <Image
-                          src={ep.poster_url}
-                          alt=""
-                          fill
-                          sizes="(max-width: 640px) 128px, 176px"
-                          className="object-cover"
-                        />
-                      ) : (
-                        <span className="flex h-full w-full items-center justify-center text-lg font-semibold text-mist-500">
-                          {ep.episode_number}
-                        </span>
-                      )}
-                      <span className="absolute inset-0 flex items-center justify-center bg-ink-950/40 opacity-0 transition group-hover:opacity-100">
-                        <Play size={28} className="text-white" aria-hidden="true" />
-                      </span>
-                      {progress && progress.percent > 0 ? (
-                        <span className="absolute inset-x-0 bottom-0 h-1 bg-ink-700">
-                          <span
-                            className="block h-full bg-royal-500"
-                            style={{ width: `${progress.percent}%` }}
-                          />
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="min-w-0 flex-1 py-1">
-                      <p className="truncate font-medium text-mist-100 group-hover:text-white">
-                        <span className="mr-2 text-mist-500">{ep.episode_number}.</span>
-                        {ep.title_mn}
-                      </p>
-                      {ep.description_mn ? (
-                        <p className="mt-1.5 line-clamp-2 text-sm text-mist-400">
-                          {ep.description_mn}
-                        </p>
-                      ) : null}
-                      <p className="mt-2 text-xs text-mist-500">
-                        {ep.duration_seconds ? formatDuration(ep.duration_seconds) : null}
-                        {progress?.completed ? " · Үзсэн" : null}
-                      </p>
-                    </div>
-                  </Link>
-                </li>
-              );
-            })}
-          </ol>
-        ) : (
-          <div className="mt-6">
-            <EmptyState title="Анги одоогоор нэмэгдээгүй байна" />
-          </div>
-        )}
+        <SeasonSelector
+          seasons={seasons.map((s) => ({ id: s.id, seasonNumber: s.season_number }))}
+          activeSeasonNumber={selectedSeason?.season_number ?? null}
+          basePath={detailPath}
+        >
+          {selectedSeason ? (
+            <Suspense
+              fallback={<EpisodeListSkeleton count={selectedSeason.episodes.length} />}
+            >
+              <EpisodeList slug={slug} episodes={selectedSeason.episodes} />
+            </Suspense>
+          ) : (
+            <div className="mt-6">
+              <EmptyState title="Анги одоогоор нэмэгдээгүй байна" />
+            </div>
+          )}
+        </SeasonSelector>
       </section>
 
       {/* -------------------------------- cast ------------------------------- */}
-      {cast.length > 0 ? (
-        <section className="container-fx py-12">
-          <h2 className="font-display text-lg font-semibold text-white sm:text-xl">
-            {t.cast}
-          </h2>
-          <div className="row-scroll -mx-4 mt-5 flex gap-4 overflow-x-auto px-4 pb-2">
-            {cast.map((p) => (
-              <div key={p.id} className="w-24 shrink-0 text-center">
-                <div className="relative mx-auto h-20 w-20 overflow-hidden rounded-full border border-ink-600 bg-ink-700">
-                  {p.photo_url ? (
-                    <Image
-                      src={p.photo_url}
-                      alt={p.name}
-                      fill
-                      sizes="80px"
-                      className="object-cover"
-                    />
-                  ) : (
-                    <span
-                      className="flex h-full w-full items-center justify-center text-lg font-semibold text-mist-400"
-                      aria-hidden="true"
-                    >
-                      {p.name
-                        .split(/\s+/)
-                        .filter(Boolean)
-                        .map((w) => w[0])
-                        .slice(0, 2)
-                        .join("")
-                        .toUpperCase()}
-                    </span>
-                  )}
-                </div>
-                <p className="mt-2 truncate text-sm text-mist-100" title={p.name}>
-                  {p.name}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
+      <Suspense fallback={null}>
+        <CastSection seriesId={series.id} />
+      </Suspense>
 
       {/* ------------------------------ trailer ------------------------------ */}
       {series.trailer_url ? (
@@ -447,22 +512,15 @@ export default async function SeriesDetailPage({
       ) : null}
 
       {/* --------------------------- similar series -------------------------- */}
-      {similar.length > 0 ? (
-        <div className="container-fx py-12">
-          <ContentRow title={t.similarTitles}>
-            {similar.map((s) => (
-              <PosterCard
-                key={s.id}
-                href={`/series/${s.slug}`}
-                title={s.title_mn}
-                posterUrl={s.poster_url}
-                year={s.release_year}
-                ageRating={s.age_rating}
-              />
-            ))}
-          </ContentRow>
-        </div>
-      ) : null}
+      <Suspense
+        fallback={
+          <div className="container-fx py-12">
+            <RowSkeleton />
+          </div>
+        }
+      >
+        <SimilarSeriesRow seriesId={series.id} genreIds={genreIds} />
+      </Suspense>
     </div>
   );
 }

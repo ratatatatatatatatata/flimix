@@ -1,0 +1,610 @@
+import "server-only";
+import { unstable_cache } from "next/cache";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { PAGE_SIZE, type BrowseFilters } from "@/lib/browse";
+import { t } from "@/lib/i18n";
+import { createPublicClient } from "@/lib/supabase/public";
+import type {
+  CastMember,
+  Country,
+  CrewMember,
+  Genre,
+  HomepageSection,
+  HomepageSectionItem,
+  Language,
+  Movie,
+  Series,
+  SubtitleTrack,
+} from "@/types/db";
+
+/**
+ * Cached PUBLIC catalog queries.
+ *
+ * Every function here:
+ *  - uses the cookie-less anon client (createPublicClient) — NEVER cookies(),
+ *  - keeps the published + not-deleted filters for public visibility,
+ *  - takes plain serializable args only (they become part of the cache key),
+ *  - is wrapped in unstable_cache with revalidate 60s and the "catalog" tag,
+ *    which admin mutations invalidate via revalidateTag("catalog").
+ */
+
+export const CATALOG_TAG = "catalog";
+const CACHE_OPTS: { revalidate: number; tags: string[] } = {
+  revalidate: 60,
+  tags: [CATALOG_TAG],
+};
+
+/* ---------------------------------- cards ---------------------------------- */
+
+export interface CatalogCard {
+  key: string;
+  href: string;
+  title: string;
+  posterUrl: string | null;
+  year: number | null;
+  ageRating: string | null;
+  isFree?: boolean;
+  progressPercent?: number;
+}
+
+export interface CatalogRow {
+  id: string;
+  title: string;
+  seeAllHref?: string;
+  items: CatalogCard[];
+}
+
+export function isLive(
+  x: Pick<Movie, "status" | "deleted_at"> | null | undefined,
+): boolean {
+  return !!x && x.status === "published" && !x.deleted_at;
+}
+
+export function movieToCard(m: Movie): CatalogCard {
+  return {
+    key: `movie-${m.id}`,
+    href: `/movie/${m.slug}`,
+    title: m.title_mn,
+    posterUrl: m.poster_url,
+    year: m.release_year,
+    ageRating: m.age_rating,
+    isFree: m.is_free,
+  };
+}
+
+export function seriesToCard(s: Series): CatalogCard {
+  return {
+    key: `series-${s.id}`,
+    href: `/series/${s.slug}`,
+    title: s.title_mn,
+    posterUrl: s.poster_url,
+    year: s.release_year,
+    ageRating: s.age_rating,
+  };
+}
+
+/* ------------------------------ base queries ------------------------------- */
+
+async function fetchMovies(
+  db: SupabaseClient,
+  opts: { sort: "newest" | "popular"; countryCode?: string; limit?: number },
+): Promise<Movie[]> {
+  const select = opts.countryCode ? "*, countries!inner(code)" : "*";
+  let query = db
+    .from("movies")
+    .select(select)
+    .eq("status", "published")
+    .is("deleted_at", null);
+  if (opts.countryCode) query = query.eq("countries.code", opts.countryCode);
+  const ordered =
+    opts.sort === "newest"
+      ? query.order("published_at", { ascending: false, nullsFirst: false })
+      : query.order("popularity", { ascending: false });
+  const { data } = await ordered.limit(opts.limit ?? 14);
+  return (data ?? []) as unknown as Movie[];
+}
+
+async function fetchSeries(
+  db: SupabaseClient,
+  opts: { sort: "newest" | "popular"; limit?: number },
+): Promise<Series[]> {
+  const query = db
+    .from("series")
+    .select("*")
+    .eq("status", "published")
+    .is("deleted_at", null);
+  const ordered =
+    opts.sort === "newest"
+      ? query.order("published_at", { ascending: false, nullsFirst: false })
+      : query.order("popularity", { ascending: false });
+  const { data } = await ordered.limit(opts.limit ?? 14);
+  return (data ?? []) as unknown as Series[];
+}
+
+/* ---------------------------- homepage sections ---------------------------- */
+
+export type AutoSource = "newest" | "popular" | "mongolian" | "series";
+
+export function parseAutoSource(aq: Record<string, unknown> | null): AutoSource {
+  const raw = aq ? (aq.source ?? aq.kind ?? aq.type ?? aq.query) : null;
+  switch (raw) {
+    case "newest":
+    case "new":
+    case "latest":
+      return "newest";
+    case "mongolian":
+    case "mn":
+      return "mongolian";
+    case "series":
+      return "series";
+    default:
+      return "popular";
+  }
+}
+
+export const AUTO_SEE_ALL: Record<AutoSource, string> = {
+  newest: "/browse?type=movie&sort=newest",
+  popular: "/browse?sort=popular",
+  mongolian: "/browse?country=MN",
+  series: "/browse?type=series",
+};
+
+/** Manual section items → cards (pure; join data already on the section). */
+export function manualSectionItems(section: HomepageSection): CatalogCard[] {
+  const items: HomepageSectionItem[] = [...(section.items ?? [])].sort(
+    (a, b) => a.sort_order - b.sort_order,
+  );
+  const cards: CatalogCard[] = [];
+  for (const item of items) {
+    if (item.content_type === "movie" && isLive(item.movie)) {
+      cards.push(movieToCard(item.movie as Movie));
+    } else if (item.content_type === "series" && isLive(item.series)) {
+      cards.push(seriesToCard(item.series as Series));
+    }
+  }
+  return cards;
+}
+
+/** Published homepage sections with items + content joins (CMS layout). */
+export const getPublishedSections = unstable_cache(
+  async (): Promise<HomepageSection[]> => {
+    const db = createPublicClient();
+    const { data } = await db
+      .from("homepage_sections")
+      .select(
+        "*, items:homepage_section_items(*, movie:movies(*, genres(*)), series:series(*, genres(*)))",
+      )
+      .eq("status", "published")
+      .order("sort_order", { ascending: true });
+    return (data ?? []) as unknown as HomepageSection[];
+  },
+  ["catalog-published-sections"],
+  CACHE_OPTS,
+);
+
+/** Content for an "auto" homepage section (query descriptor → cards). */
+export const getAutoSectionContent = unstable_cache(
+  async (source: AutoSource): Promise<CatalogCard[]> => {
+    const db = createPublicClient();
+    switch (source) {
+      case "newest":
+        return (await fetchMovies(db, { sort: "newest" })).map(movieToCard);
+      case "mongolian":
+        return (await fetchMovies(db, { sort: "popular", countryCode: "MN" })).map(
+          movieToCard,
+        );
+      case "series":
+        return (await fetchSeries(db, { sort: "popular" })).map(seriesToCard);
+      default:
+        return (await fetchMovies(db, { sort: "popular" })).map(movieToCard);
+    }
+  },
+  ["catalog-auto-section"],
+  CACHE_OPTS,
+);
+
+/** Fallback landing rows when no CMS sections exist (newest/popular/MN/series). */
+export const getLandingFallbackRows = unstable_cache(
+  async (): Promise<CatalogRow[]> => {
+    const db = createPublicClient();
+    const [newest, popular, mongolian, seriesList] = await Promise.all([
+      fetchMovies(db, { sort: "newest" }),
+      fetchMovies(db, { sort: "popular" }),
+      fetchMovies(db, { sort: "popular", countryCode: "MN" }),
+      fetchSeries(db, { sort: "popular" }),
+    ]);
+    return [
+      {
+        id: "fb-newest",
+        title: t.newReleases,
+        seeAllHref: AUTO_SEE_ALL.newest,
+        items: newest.map(movieToCard),
+      },
+      {
+        id: "fb-popular",
+        title: t.trending,
+        seeAllHref: AUTO_SEE_ALL.popular,
+        items: popular.map(movieToCard),
+      },
+      {
+        id: "fb-mn",
+        title: t.mongolianCinema,
+        seeAllHref: AUTO_SEE_ALL.mongolian,
+        items: mongolian.map(movieToCard),
+      },
+      {
+        id: "fb-series",
+        title: t.series,
+        seeAllHref: AUTO_SEE_ALL.series,
+        items: seriesList.map(seriesToCard),
+      },
+    ].filter((r) => r.items.length > 0);
+  },
+  ["catalog-fallback-rows"],
+  CACHE_OPTS,
+);
+
+/* ----------------------------------- hero ---------------------------------- */
+
+export interface HeroData {
+  title: string;
+  originalTitle: string | null;
+  description: string | null;
+  backdropUrl: string | null;
+  href: string;
+  year: number | null;
+  ageRating: string | null;
+  genres: string[];
+  isFree: boolean;
+}
+
+export function heroFromMovie(m: Movie): HeroData {
+  return {
+    title: m.title_mn,
+    originalTitle: m.original_title,
+    description: m.description_mn,
+    backdropUrl: m.backdrop_url,
+    href: `/movie/${m.slug}`,
+    year: m.release_year,
+    ageRating: m.age_rating,
+    genres: (m.genres ?? []).map((g) => g.name_mn).slice(0, 3),
+    isFree: m.is_free,
+  };
+}
+
+export function heroFromSeries(s: Series): HeroData {
+  return {
+    title: s.title_mn,
+    originalTitle: s.original_title,
+    description: s.description_mn,
+    backdropUrl: s.backdrop_url,
+    href: `/series/${s.slug}`,
+    year: s.release_year,
+    ageRating: s.age_rating,
+    genres: (s.genres ?? []).map((g) => g.name_mn).slice(0, 3),
+    isFree: false,
+  };
+}
+
+/** First live item of a hero CMS section → hero data (pure). */
+export function heroFromSection(section: HomepageSection | undefined): HeroData | null {
+  if (!section) return null;
+  const items = [...(section.items ?? [])].sort((a, b) => a.sort_order - b.sort_order);
+  for (const item of items) {
+    if (item.content_type === "movie" && isLive(item.movie)) {
+      return heroFromMovie(item.movie as Movie);
+    }
+    if (item.content_type === "series" && isLive(item.series)) {
+      return heroFromSeries(item.series as Series);
+    }
+  }
+  return null;
+}
+
+/** Fallback hero: most popular published movie with a backdrop. */
+export const getHeroTitle = unstable_cache(
+  async (): Promise<HeroData | null> => {
+    const db = createPublicClient();
+    const { data } = await db
+      .from("movies")
+      .select("*, genres(*)")
+      .eq("status", "published")
+      .is("deleted_at", null)
+      .not("backdrop_url", "is", null)
+      .order("popularity", { ascending: false })
+      .limit(1);
+    const movie = ((data ?? []) as unknown as Movie[])[0];
+    return movie ? heroFromMovie(movie) : null;
+  },
+  ["catalog-hero-title"],
+  CACHE_OPTS,
+);
+
+/* ---------------------------------- browse --------------------------------- */
+
+export interface PagedResult<T> {
+  items: T[];
+  count: number;
+}
+
+export interface BrowseResult {
+  movies: PagedResult<Movie>;
+  series: PagedResult<Series>;
+}
+
+interface SubtitleScope {
+  movieIds: string[];
+  seriesIds: string[];
+}
+
+/** Resolve subtitle-language filter into concrete content ids (movies + series). */
+async function resolveSubtitleScope(
+  db: SupabaseClient,
+  code: string,
+): Promise<SubtitleScope> {
+  const empty: SubtitleScope = { movieIds: [], seriesIds: [] };
+  const { data: lang } = await db
+    .from("languages")
+    .select("id")
+    .eq("code", code)
+    .maybeSingle();
+  if (!lang) return empty;
+
+  const { data: tracks } = await db
+    .from("subtitle_tracks")
+    .select("content_type, content_id")
+    .eq("language_id", (lang as { id: string }).id)
+    .limit(2000);
+  const rows = (tracks ?? []) as { content_type: string; content_id: string }[];
+  const movieIds = [
+    ...new Set(rows.filter((r) => r.content_type === "movie").map((r) => r.content_id)),
+  ];
+  const episodeIds = rows
+    .filter((r) => r.content_type === "episode")
+    .map((r) => r.content_id);
+
+  let seriesIds: string[] = [];
+  if (episodeIds.length > 0) {
+    const { data: eps } = await db
+      .from("episodes")
+      .select("season_id")
+      .in("id", episodeIds);
+    const seasonIds = [
+      ...new Set(((eps ?? []) as { season_id: string }[]).map((e) => e.season_id)),
+    ];
+    if (seasonIds.length > 0) {
+      const { data: seasons } = await db
+        .from("seasons")
+        .select("series_id")
+        .in("id", seasonIds);
+      seriesIds = [
+        ...new Set(((seasons ?? []) as { series_id: string }[]).map((s) => s.series_id)),
+      ];
+    }
+  }
+  return { movieIds, seriesIds };
+}
+
+async function queryTable<T>(
+  db: SupabaseClient,
+  table: "movies" | "series",
+  f: BrowseFilters,
+  idFilter: string[] | null,
+  from: number,
+  to: number,
+): Promise<PagedResult<T>> {
+  if (idFilter !== null && idFilter.length === 0) return { items: [], count: 0 };
+
+  const junction = table === "movies" ? "movie_genres" : "series_genres";
+  const selectParts = ["*"];
+  if (f.genre) selectParts.push(`${junction}!inner(genres!inner(slug))`);
+  if (f.country) selectParts.push("countries!inner(code)");
+
+  let q = db
+    .from(table)
+    .select(selectParts.join(", "), { count: "exact" })
+    .eq("status", "published")
+    .is("deleted_at", null);
+
+  if (f.genre) q = q.eq(`${junction}.genres.slug`, f.genre);
+  if (f.country) q = q.eq("countries.code", f.country);
+  if (f.decade) q = q.gte("release_year", f.decade).lte("release_year", f.decade + 9);
+  if (idFilter !== null) q = q.in("id", idFilter);
+
+  const ordered =
+    f.sort === "popular"
+      ? q.order("popularity", { ascending: false })
+      : f.sort === "rating"
+        ? q.order("rating", { ascending: false, nullsFirst: false })
+        : f.sort === "title"
+          ? q.order("title_mn", { ascending: true })
+          : q.order("published_at", { ascending: false, nullsFirst: false });
+
+  const { data, count } = await ordered.range(from, to);
+  return { items: (data ?? []) as unknown as T[], count: count ?? 0 };
+}
+
+/** Full /browse result set for a filter combination (same semantics as the page). */
+export const browseCatalog = unstable_cache(
+  async (f: BrowseFilters): Promise<BrowseResult> => {
+    const db = createPublicClient();
+    const subScope = f.sub ? await resolveSubtitleScope(db, f.sub) : null;
+
+    // Pagination: single-type pages take the full page, "all" splits it evenly.
+    const half = PAGE_SIZE / 2;
+    const perTable = f.type === "all" ? half : PAGE_SIZE;
+    const from = (f.page - 1) * perTable;
+    const to = from + perTable - 1;
+
+    const wantMovies = f.type !== "series";
+    const wantSeries = f.type !== "movie";
+
+    const [movies, series] = await Promise.all([
+      wantMovies
+        ? queryTable<Movie>(db, "movies", f, subScope ? subScope.movieIds : null, from, to)
+        : Promise.resolve({ items: [] as Movie[], count: 0 }),
+      wantSeries
+        ? queryTable<Series>(db, "series", f, subScope ? subScope.seriesIds : null, from, to)
+        : Promise.resolve({ items: [] as Series[], count: 0 }),
+    ]);
+    return { movies, series };
+  },
+  ["catalog-browse"],
+  CACHE_OPTS,
+);
+
+export interface BrowseTaxonomies {
+  genres: Genre[];
+  countries: Country[];
+  languages: Language[];
+}
+
+/** Filter chip sources (genres / countries / languages). */
+export const getBrowseTaxonomies = unstable_cache(
+  async (): Promise<BrowseTaxonomies> => {
+    const db = createPublicClient();
+    const [genresRes, countriesRes, languagesRes] = await Promise.all([
+      db.from("genres").select("*").order("name_mn"),
+      db.from("countries").select("*").order("name_mn").limit(40),
+      db.from("languages").select("*").order("name_mn").limit(20),
+    ]);
+    return {
+      genres: (genresRes.data ?? []) as unknown as Genre[],
+      countries: (countriesRes.data ?? []) as unknown as Country[],
+      languages: (languagesRes.data ?? []) as unknown as Language[],
+    };
+  },
+  ["catalog-browse-taxonomies"],
+  CACHE_OPTS,
+);
+
+/* ------------------------------- detail pages ------------------------------ */
+
+/**
+ * Movie by slug (not-deleted only). Status is returned so pages can render the
+ * "unavailable" notice for non-published rows — anon RLS already hides what
+ * the public must not see.
+ */
+export const getMovieBySlug = unstable_cache(
+  async (slug: string): Promise<Movie | null> => {
+    const db = createPublicClient();
+    const { data } = await db
+      .from("movies")
+      .select("*, genres(*), country:countries(*)")
+      .eq("slug", slug)
+      .is("deleted_at", null)
+      .maybeSingle();
+    return (data as unknown as Movie | null) ?? null;
+  },
+  ["catalog-movie-by-slug"],
+  CACHE_OPTS,
+);
+
+/** Series by slug with seasons + episodes (not-deleted only). */
+export const getSeriesBySlug = unstable_cache(
+  async (slug: string): Promise<Series | null> => {
+    const db = createPublicClient();
+    const { data } = await db
+      .from("series")
+      .select("*, genres(*), country:countries(*), seasons(*, episodes(*))")
+      .eq("slug", slug)
+      .is("deleted_at", null)
+      .maybeSingle();
+    return (data as unknown as Series | null) ?? null;
+  },
+  ["catalog-series-by-slug"],
+  CACHE_OPTS,
+);
+
+export interface MovieCredits {
+  cast: CastMember[];
+  crew: CrewMember[];
+  subtitles: SubtitleTrack[];
+}
+
+/** Cast, crew and subtitle tracks for a movie (public metadata). */
+export const getMovieCredits = unstable_cache(
+  async (movieId: string): Promise<MovieCredits> => {
+    const db = createPublicClient();
+    const [castRes, crewRes, subsRes] = await Promise.all([
+      db.from("movie_cast").select("cast_members(*)").eq("movie_id", movieId),
+      db.from("movie_crew").select("crew_members(*)").eq("movie_id", movieId),
+      db
+        .from("subtitle_tracks")
+        .select("*, language:languages(*)")
+        .eq("content_type", "movie")
+        .eq("content_id", movieId),
+    ]);
+    const cast = (
+      (castRes.data ?? []) as unknown as { cast_members: CastMember | null }[]
+    )
+      .map((r) => r.cast_members)
+      .filter((p): p is CastMember => p !== null);
+    // movie_crew is optional in early schemas — a query error just means "no crew".
+    const crew = crewRes.error
+      ? []
+      : ((crewRes.data ?? []) as unknown as { crew_members: CrewMember | null }[])
+          .map((r) => r.crew_members)
+          .filter((p): p is CrewMember => p !== null);
+    const subtitles = (subsRes.data ?? []) as unknown as SubtitleTrack[];
+    return { cast, crew, subtitles };
+  },
+  ["catalog-movie-credits"],
+  CACHE_OPTS,
+);
+
+/** Cast list for a series (public metadata). */
+export const getSeriesCast = unstable_cache(
+  async (seriesId: string): Promise<CastMember[]> => {
+    const db = createPublicClient();
+    const { data } = await db
+      .from("series_cast")
+      .select("cast_members(*)")
+      .eq("series_id", seriesId);
+    return ((data ?? []) as unknown as { cast_members: CastMember | null }[])
+      .map((r) => r.cast_members)
+      .filter((p): p is CastMember => p !== null);
+  },
+  ["catalog-series-cast"],
+  CACHE_OPTS,
+);
+
+/** Published movies sharing at least one genre, most popular first. */
+export const getSimilarMovies = unstable_cache(
+  async (movieId: string, genreIds: string[]): Promise<Movie[]> => {
+    if (genreIds.length === 0) return [];
+    const db = createPublicClient();
+    const { data } = await db
+      .from("movies")
+      .select("*, movie_genres!inner(genre_id)")
+      .in("movie_genres.genre_id", genreIds)
+      .neq("id", movieId)
+      .eq("status", "published")
+      .is("deleted_at", null)
+      .order("popularity", { ascending: false })
+      .limit(12);
+    return (data ?? []) as unknown as Movie[];
+  },
+  ["catalog-similar-movies"],
+  CACHE_OPTS,
+);
+
+/** Published series sharing at least one genre, most popular first. */
+export const getSimilarSeries = unstable_cache(
+  async (seriesId: string, genreIds: string[]): Promise<Series[]> => {
+    if (genreIds.length === 0) return [];
+    const db = createPublicClient();
+    const { data } = await db
+      .from("series")
+      .select("*, series_genres!inner(genre_id)")
+      .in("series_genres.genre_id", genreIds)
+      .neq("id", seriesId)
+      .eq("status", "published")
+      .is("deleted_at", null)
+      .order("popularity", { ascending: false })
+      .limit(12);
+    return (data ?? []) as unknown as Series[];
+  },
+  ["catalog-similar-series"],
+  CACHE_OPTS,
+);
