@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { requireUser } from "@/lib/auth";
+import { Logo } from "@/components/brand/Logo";
 import { AccountNav } from "./AccountNav";
+import { BackButton } from "./BackButton";
 import { signOutAction } from "./actions";
 
 export const metadata: Metadata = { title: "Миний бүртгэл — FLIMIX" };
@@ -13,6 +15,13 @@ export default async function AccountLayout({
   await requireUser();
   return (
     <div className="min-h-screen bg-ink-950">
+      {/* Top bar: back to the site + brand */}
+      <div className="border-b border-ink-600/40">
+        <div className="container-fx flex h-14 items-center justify-between">
+          <BackButton />
+          <Logo />
+        </div>
+      </div>
       <div className="container-fx py-8 lg:py-12">
         <div className="flex flex-col gap-6 lg:flex-row lg:gap-10">
           <aside className="shrink-0">
