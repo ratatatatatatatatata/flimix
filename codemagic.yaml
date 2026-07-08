@@ -1,0 +1,37 @@
+# Codemagic CI — FLIMIX iOS (Capacitor) build & App Store upload
+# Тохиргоо: Codemagic UI дээр iOS code signing (automatic) болон
+# App Store Connect API key-гээ холбосны дараа энэ workflow ажиллана.
+workflows:
+  ios-capacitor:
+    name: FLIMIX iOS
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: flimix-asc-key   # Codemagic > Teams > Integrations дээр үүсгэсэн нэр
+    environment:
+      xcode: latest
+      node: 20
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: mn.flimix.app
+    scripts:
+      - name: Install dependencies
+        script: |
+          cd mobile
+          npm install
+      - name: Add/Sync iOS platform
+        script: |
+          cd mobile
+          npx cap sync ios || npx cap add ios && npx cap sync ios
+      - name: Set up code signing
+        script: xcode-project use-profiles
+      - name: Build IPA
+        script: |
+          cd mobile/ios/App
+          xcode-project build-ipa --workspace App.xcworkspace --scheme App
+    artifacts:
+      - mobile/ios/App/build/ios/ipa/*.ipa
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
