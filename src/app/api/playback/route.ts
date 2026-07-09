@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getSignedPlaybackUrl, type SignedPlayback } from "@/lib/video";
 import type {
+  AudioTrack,
   Episode,
   Movie,
   Subscription,
@@ -168,6 +169,26 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     .eq("content_id", contentId);
   const subtitles = (subtitleRows ?? []) as SubtitleTrack[];
 
+  // Dub audio tracks: only rows that actually carry a playable URL. When at
+  // least one exists the player replaces the video's original audio entirely.
+  const { data: audioRows } = await admin
+    .from("audio_tracks")
+    .select("*, language:languages(*)")
+    .eq("content_type", contentType)
+    .eq("content_id", contentId);
+  const audioTracks = ((audioRows ?? []) as AudioTrack[])
+    .filter(
+      (track): track is AudioTrack & { url: string } =>
+        typeof track.url === "string" && track.url.length > 0,
+    )
+    .map((track) => ({
+      id: track.id,
+      label: track.label,
+      url: track.url,
+      isDefault: track.is_default,
+      language: track.language?.code ?? null,
+    }));
+
   const { data: progressRow } = await admin
     .from("watch_progress")
     .select("progress_seconds")
@@ -182,6 +203,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     hlsUrl: signed.hlsUrl,
     expiresAt: signed.expiresAt,
     subtitles,
+    audioTracks,
     progressSeconds,
     sessionId,
   });

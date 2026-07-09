@@ -3,7 +3,11 @@
 import { ArrowLeft, Lock } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { VideoPlayer, type PlayerSubtitle } from "@/components/player/VideoPlayer";
+import {
+  VideoPlayer,
+  type PlayerAudioTrack,
+  type PlayerSubtitle,
+} from "@/components/player/VideoPlayer";
 import { Button } from "@/components/ui/Button";
 import { t } from "@/lib/i18n";
 import type { SubtitleTrack } from "@/types/db";
@@ -18,10 +22,19 @@ interface WatchClientProps {
   nextHref?: string | null;
 }
 
+interface PlaybackAudioTrackDto {
+  id: string;
+  label: string;
+  url: string;
+  isDefault: boolean;
+  language: string | null;
+}
+
 interface PlaybackResponse {
   hlsUrl: string;
   expiresAt: string;
   subtitles: SubtitleTrack[];
+  audioTracks: PlaybackAudioTrackDto[];
   progressSeconds: number;
   sessionId: string;
 }
@@ -102,6 +115,16 @@ export function WatchClient({
         }))
       : [];
 
+  const audioTracks: PlayerAudioTrack[] =
+    state.kind === "ready"
+      ? state.playback.audioTracks.map((track) => ({
+          id: track.id,
+          label: track.label,
+          src: track.url,
+          default: track.isDefault,
+        }))
+      : [];
+
   return (
     <div className="relative h-dvh w-full bg-black">
       {/* Back to detail page */}
@@ -171,6 +194,7 @@ export function WatchClient({
           hlsUrl={state.playback.hlsUrl}
           title={title}
           subtitles={subtitles}
+          audioTracks={audioTracks}
           startAt={state.playback.progressSeconds}
           introStart={introStart ?? null}
           introEnd={introEnd ?? null}

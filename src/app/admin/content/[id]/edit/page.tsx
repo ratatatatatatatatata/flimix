@@ -2,6 +2,7 @@ import { requireRole } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { notFound } from "next/navigation";
 import { MovieForm, type SubtitleDraft } from "../../MovieForm";
+import type { AudioTrackDraft } from "../../../_components/AudioTracksField";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import type {
@@ -29,7 +30,7 @@ export default async function EditMoviePage({
   if (movieRes.error || !movieRes.data) notFound();
   const movie = movieRes.data as Movie;
 
-  const [genres, countries, languages, cast, crew, mg, mc, mcr, subs, assetRes] =
+  const [genres, countries, languages, cast, crew, mg, mc, mcr, subs, audio, assetRes] =
     await Promise.all([
       db.from("genres").select("*").order("name_mn"),
       db.from("countries").select("*").order("name_mn"),
@@ -41,6 +42,11 @@ export default async function EditMoviePage({
       db.from("movie_crew").select("crew_member_id").eq("movie_id", id),
       db
         .from("subtitle_tracks")
+        .select("language_id,label,url,is_default")
+        .eq("content_type", "movie")
+        .eq("content_id", id),
+      db
+        .from("audio_tracks")
         .select("language_id,label,url,is_default")
         .eq("content_type", "movie")
         .eq("content_id", id),
@@ -66,6 +72,21 @@ export default async function EditMoviePage({
         selectedCastIds={((mc.data ?? []) as { cast_member_id: string }[]).map((r) => r.cast_member_id)}
         selectedCrewIds={((mcr.data ?? []) as { crew_member_id: string }[]).map((r) => r.crew_member_id)}
         subtitles={(subs.data ?? []) as SubtitleDraft[]}
+        audioTracks={(
+          (audio.data ?? []) as {
+            language_id: string;
+            label: string;
+            url: string | null;
+            is_default: boolean;
+          }[]
+        ).map(
+          (r): AudioTrackDraft => ({
+            language_id: r.language_id,
+            label: r.label,
+            url: r.url ?? "",
+            is_default: r.is_default,
+          }),
+        )}
         videoAsset={(assetRes.data as VideoAsset | null) ?? null}
       />
     </div>

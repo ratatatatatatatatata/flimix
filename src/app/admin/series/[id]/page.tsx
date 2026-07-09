@@ -11,7 +11,8 @@ import { Input } from "@/components/ui/Input";
 import { EmptyState } from "@/components/ui/EmptyState";
 import Link from "next/link";
 import { ArrowLeft, ChevronDown, Plus } from "lucide-react";
-import type { Country, Episode, Genre, Season, Series, VideoAsset } from "@/types/db";
+import type { Country, Episode, Genre, Language, Season, Series, VideoAsset } from "@/types/db";
+import { AudioTracksField, type AudioTrackDraft } from "../../_components/AudioTracksField";
 
 export const dynamic = "force-dynamic";
 
@@ -25,12 +26,16 @@ function EpisodeForm({
   episode,
   asset,
   nextNumber,
+  languages,
+  audioTracks,
 }: {
   seriesId: string;
   seasonId: string;
   episode: Episode | null;
   asset: VideoAsset | null;
   nextNumber: number;
+  languages: Language[];
+  audioTracks: AudioTrackDraft[];
 }) {
   const idp = episode ? `ep-${episode.id}` : `new-${seasonId}`;
   return (
@@ -111,6 +116,10 @@ function EpisodeForm({
           ))}
         </div>
       </fieldset>
+      <fieldset className="space-y-3 rounded-lg border border-ink-700 bg-ink-900/50 p-3">
+        <legend className="px-1 text-sm text-mist-300">Дуу оруулах (дубляж)</legend>
+        <AudioTracksField languages={languages} initial={audioTracks} idPrefix={idp} />
+      </fieldset>
       <div className="flex gap-2">
         <Button type="submit" size="sm">{episode ? "Хадгалах" : "Анги нэмэх"}</Button>
       </div>
@@ -134,12 +143,14 @@ export default async function ManageSeriesPage({
   if (seriesRes.error || !seriesRes.data) notFound();
   const series = seriesRes.data as Series;
 
-  const [genres, countries, sg, seasonsRes] = await Promise.all([
+  const [genres, countries, languagesRes, sg, seasonsRes] = await Promise.all([
     db.from("genres").select("*").order("name_mn"),
     db.from("countries").select("*").order("name_mn"),
+    db.from("languages").select("*").order("name_mn"),
     db.from("series_genres").select("genre_id").eq("series_id", id),
     db.from("seasons").select("*").eq("series_id", id).order("season_number"),
   ]);
+  const languages = (languagesRes.data ?? []) as Language[];
   const seasons = (seasonsRes.data ?? []) as Season[];
 
   const seasonIds = seasons.map((s) => s.id);
@@ -153,6 +164,32 @@ export default async function ManageSeriesPage({
     ? await db.from("video_assets").select("*").in("id", assetIds)
     : { data: [] as VideoAsset[] };
   const assetById = new Map(((assetsRes.data ?? []) as VideoAsset[]).map((a) => [a.id, a]));
+
+  type EpisodeAudioRow = {
+    content_id: string;
+    language_id: string;
+    label: string;
+    url: string | null;
+    is_default: boolean;
+  };
+  const audioRes = episodes.length
+    ? await db
+        .from("audio_tracks")
+        .select("content_id,language_id,label,url,is_default")
+        .eq("content_type", "episode")
+        .in("content_id", episodes.map((e) => e.id))
+    : { data: [] as EpisodeAudioRow[] };
+  const audioByEpisode = new Map<string, AudioTrackDraft[]>();
+  for (const row of (audioRes.data ?? []) as EpisodeAudioRow[]) {
+    const list = audioByEpisode.get(row.content_id) ?? [];
+    list.push({
+      language_id: row.language_id,
+      label: row.label,
+      url: row.url ?? "",
+      is_default: row.is_default,
+    });
+    audioByEpisode.set(row.content_id, list);
+  }
 
   const nextSeasonNumber = seasons.length ? Math.max(...seasons.map((s) => s.season_number)) + 1 : 1;
 
@@ -242,6 +279,8 @@ export default async function ManageSeriesPage({
                               episode={ep}
                               asset={ep.playback_asset_id ? (assetById.get(ep.playback_asset_id) ?? null) : null}
                               nextNumber={ep.episode_number}
+                              languages={languages}
+                              audioTracks={audioByEpisode.get(ep.id) ?? []}
                             />
                             <form action={deleteEpisode}>
                               <input type="hidden" name="series_id" value={series.id} />
@@ -257,7 +296,15 @@ export default async function ManageSeriesPage({
                   <details className="rounded-lg border border-dashed border-ink-600 bg-ink-900/40">
                     <summary className="cursor-pointer px-4 py-3 text-sm text-royal-300">+ Шинэ анги нэмэх</summary>
                     <div className="border-t border-ink-700 p-4">
-                      <EpisodeForm seriesId={series.id} seasonId={season.id} episode={null} asset={null} nextNumber={nextEp} />
+                      <EpisodeForm
+                        seriesId={series.id}
+                        seasonId={season.id}
+                        episode={null}
+                        asset={null}
+                        nextNumber={nextEp}
+                        languages={languages}
+                        audioTracks={[]}
+                      />
                     </div>
                   </details>
 

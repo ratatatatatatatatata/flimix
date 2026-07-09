@@ -196,6 +196,8 @@ export interface AudioTrack {
   content_id: UUID;
   language_id: UUID;
   label: string;
+  url: string | null;
+  is_default: boolean;
   language?: Language;
 }
 

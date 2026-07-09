@@ -4,6 +4,7 @@ import type Hls from "hls.js";
 import {
   Check,
   Gauge,
+  Headphones,
   Maximize,
   Minimize,
   Pause,
@@ -38,10 +39,22 @@ export interface PlayerSubtitle {
   default?: boolean;
 }
 
+export interface PlayerAudioTrack {
+  id: string;
+  label: string;
+  src: string;
+  default?: boolean;
+}
+
 export interface VideoPlayerProps {
   hlsUrl: string;
   title: string;
   subtitles: PlayerSubtitle[];
+  /**
+   * Separately uploaded dub tracks. When at least one exists the video's own
+   * audio is muted entirely and the default dub plays in sync instead.
+   */
+  audioTracks: PlayerAudioTrack[];
   startAt?: number;
   introStart?: number | null;
   introEnd?: number | null;
@@ -59,8 +72,12 @@ const SEEK_STEP_SECONDS = 10;
 const CONTROLS_HIDE_MS = 3000;
 const PROGRESS_INTERVAL_MS = 10_000;
 const DOUBLE_TAP_MS = 280;
+/** Dub sync: correct when audio drifts more than this many seconds from video. */
+const DUB_DRIFT_TOLERANCE_S = 0.35;
+const DUB_DRIFT_CHECK_MS = 2000;
+const DUB_NOTICE_HIDE_MS = 6000;
 
-type MenuKind = "speed" | "quality" | "subtitles" | null;
+type MenuKind = "speed" | "quality" | "subtitles" | "audio" | null;
 
 function formatTimecode(value: number): string {
   const total = Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
@@ -75,6 +92,7 @@ export function VideoPlayer({
   hlsUrl,
   title,
   subtitles,
+  audioTracks,
   startAt,
   introStart,
   introEnd,
@@ -83,6 +101,7 @@ export function VideoPlayer({
 }: VideoPlayerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const seekWrapRef = useRef<HTMLDivElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -106,6 +125,15 @@ export function VideoPlayer({
   const [activeSubtitle, setActiveSubtitle] = useState<number>(
     defaultSubtitle >= 0 ? defaultSubtitle : -1,
   );
+  // Dub audio: replaces the original audio entirely while active.
+  const defaultDubIndex = audioTracks.findIndex((track) => track.default === true);
+  const [dubIndex, setDubIndex] = useState<number>(
+    audioTracks.length > 0 ? (defaultDubIndex >= 0 ? defaultDubIndex : 0) : -1,
+  );
+  const [dubFailed, setDubFailed] = useState(false);
+  const [dubNotice, setDubNotice] = useState<string | null>(null);
+  const dubActive = audioTracks.length > 0 && !dubFailed;
+  const activeDub = dubActive && dubIndex >= 0 ? audioTracks[dubIndex] : undefined;
   const [controlsVisible, setControlsVisible] = useState(true);
   const [openMenu, setOpenMenu] = useState<MenuKind>(null);
   const [hover, setHover] = useState<{ x: number; time: number } | null>(null);
@@ -267,22 +295,103 @@ export function VideoPlayer({
   );
 
   const setVolumeClamped = useCallback((next: number) => {
-    const video = videoRef.current;
     const clamped = Math.min(1, Math.max(0, next));
     setVolume(clamped);
-    if (video) {
-      video.volume = clamped;
-      video.muted = clamped === 0;
-    }
     setMuted(clamped === 0);
   }, []);
 
   const toggleMute = useCallback(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    video.muted = !video.muted;
-    setMuted(video.muted);
+    setMuted((prev) => !prev);
   }, []);
+
+  // Route volume/mute to whichever element is audible: while a dub is active
+  // the <video> stays permanently muted and the <audio> element takes over.
+  useEffect(() => {
+    const video = videoRef.current;
+    const audio = audioRef.current;
+    if (video) {
+      if (dubActive) {
+        video.muted = true;
+      } else {
+        video.volume = volume;
+        video.muted = muted;
+      }
+    }
+    if (audio && dubActive) {
+      audio.volume = volume;
+      audio.muted = muted;
+    }
+  }, [volume, muted, dubActive, dubIndex]);
+
+  // Dub sync engine: the <video> element is the clock, the <audio> element
+  // follows every transport event and gets nudged back when it drifts.
+  useEffect(() => {
+    if (!dubActive) return;
+    const video = videoRef.current;
+    const audio = audioRef.current;
+    if (!video || !audio) return;
+
+    video.muted = true;
+    const syncTime = () => {
+      if (Number.isFinite(video.currentTime)) audio.currentTime = video.currentTime;
+    };
+    const playAudio = () => {
+      void audio.play().catch(() => {
+        /* interrupted by pause/src change — the next event resyncs */
+      });
+    };
+    const onPlay = () => {
+      syncTime();
+      playAudio();
+    };
+    const onPause = () => audio.pause();
+    const onRateChange = () => {
+      audio.playbackRate = video.playbackRate;
+    };
+    const onWaiting = () => audio.pause();
+    const onPlaying = () => {
+      syncTime();
+      if (!video.paused) playAudio();
+    };
+
+    video.addEventListener("play", onPlay);
+    video.addEventListener("pause", onPause);
+    video.addEventListener("seeking", syncTime);
+    video.addEventListener("seeked", syncTime);
+    video.addEventListener("ratechange", onRateChange);
+    video.addEventListener("waiting", onWaiting);
+    video.addEventListener("playing", onPlaying);
+
+    const driftTimer = setInterval(() => {
+      if (video.paused || audio.readyState < 2) return;
+      if (Math.abs(audio.currentTime - video.currentTime) > DUB_DRIFT_TOLERANCE_S) {
+        syncTime();
+      }
+    }, DUB_DRIFT_CHECK_MS);
+
+    audio.playbackRate = video.playbackRate;
+    syncTime();
+    if (!video.paused) playAudio();
+
+    return () => {
+      video.removeEventListener("play", onPlay);
+      video.removeEventListener("pause", onPause);
+      video.removeEventListener("seeking", syncTime);
+      video.removeEventListener("seeked", syncTime);
+      video.removeEventListener("ratechange", onRateChange);
+      video.removeEventListener("waiting", onWaiting);
+      video.removeEventListener("playing", onPlaying);
+      clearInterval(driftTimer);
+      audio.pause();
+    };
+  }, [dubActive, dubIndex]);
+
+  // Auto-hide the dub fallback notice.
+  useEffect(() => {
+    if (!dubNotice) return;
+    const id = setTimeout(() => setDubNotice(null), DUB_NOTICE_HIDE_MS);
+    return () => clearTimeout(id);
+  }, [dubNotice]);
 
   const toggleFullscreen = useCallback(() => {
     const container = containerRef.current;
@@ -326,6 +435,11 @@ export function VideoPlayer({
     },
     [speed, changeSpeed],
   );
+
+  const changeDub = useCallback((index: number) => {
+    setDubIndex(index);
+    setOpenMenu(null);
+  }, []);
 
   const changeQuality = useCallback((levelIndex: number) => {
     if (hlsRef.current) hlsRef.current.currentLevel = levelIndex;
@@ -495,6 +609,43 @@ export function VideoPlayer({
           />
         ))}
       </video>
+
+      {/* Dub audio: replaces the original soundtrack while present */}
+      {activeDub ? (
+        <audio
+          ref={audioRef}
+          src={activeDub.src}
+          preload="auto"
+          crossOrigin="anonymous"
+          className="hidden"
+          onLoadedMetadata={() => {
+            const video = videoRef.current;
+            const audio = audioRef.current;
+            if (!video || !audio) return;
+            audio.currentTime = video.currentTime;
+            audio.playbackRate = video.playbackRate;
+            if (!video.paused) {
+              void audio.play().catch(() => {
+                /* resynced on the next transport event */
+              });
+            }
+          }}
+          onError={() => {
+            setDubFailed(true);
+            setDubNotice("Дубляж ачаалагдсангүй — эх дуугаар тоглож байна");
+          }}
+        />
+      ) : null}
+
+      {/* Dub fallback notice */}
+      {dubNotice ? (
+        <p
+          role="status"
+          className="absolute left-1/2 top-6 z-30 -translate-x-1/2 whitespace-nowrap rounded-lg border border-ink-600 bg-black/80 px-4 py-2 text-sm text-mist-100 backdrop-blur"
+        >
+          {dubNotice}
+        </p>
+      ) : null}
 
       {/* Tap / click surface */}
       <div
@@ -703,6 +854,39 @@ export function VideoPlayer({
                       >
                         <span>{level.height}p</span>
                         {currentLevel === level.index ? (
+                          <Check className="h-4 w-4 text-royal-400" aria-hidden="true" />
+                        ) : null}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {/* Dub audio tracks (original audio is intentionally not offered) */}
+            {dubActive && audioTracks.length > 1 ? (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setOpenMenu(openMenu === "audio" ? null : "audio")}
+                  className="rounded-md p-2 text-white transition hover:bg-white/10"
+                  aria-label={t.audio}
+                  aria-expanded={openMenu === "audio"}
+                >
+                  <Headphones className="h-5 w-5" aria-hidden="true" />
+                </button>
+                {openMenu === "audio" ? (
+                  <div className="absolute bottom-12 right-0 z-30 w-44 rounded-lg border border-ink-600 bg-ink-800/95 p-1 backdrop-blur">
+                    <p className="px-3 py-1 text-xs uppercase tracking-wide text-mist-500">{t.audio}</p>
+                    {audioTracks.map((track, index) => (
+                      <button
+                        key={track.id}
+                        type="button"
+                        className={menuButtonClass}
+                        onClick={() => changeDub(index)}
+                      >
+                        <span>{track.label}</span>
+                        {dubIndex === index ? (
                           <Check className="h-4 w-4 text-royal-400" aria-hidden="true" />
                         ) : null}
                       </button>

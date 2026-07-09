@@ -255,6 +255,23 @@ export async function deleteSeason(formData: FormData): Promise<void> {
 /* Episodes                                                            */
 /* ------------------------------------------------------------------ */
 
+const audioTrackSchema = z.object({
+  language_id: z.string().uuid(),
+  label: z.string().min(1),
+  url: z.string().url("Дууны URL буруу байна"),
+  is_default: z.boolean(),
+});
+
+const parseJsonField = (formData: FormData, name: string): unknown => {
+  const raw = formData.get(name);
+  if (typeof raw !== "string" || raw.trim() === "") return null;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    throw new AdminActionError(`Талбарын өгөгдөл эвдэрсэн байна (${name})`);
+  }
+};
+
 const episodeSchema = z.object({
   id: z.string().uuid().optional(),
   season_id: z.string().uuid(),
@@ -271,6 +288,7 @@ const episodeSchema = z.object({
   video_provider_video_id: z.string().nullable(),
   video_hls_path: z.string().nullable(),
   video_qualities: z.array(z.string()),
+  audio_tracks: z.array(audioTrackSchema),
 });
 
 export async function saveEpisode(formData: FormData): Promise<void> {
@@ -296,6 +314,7 @@ export async function saveEpisode(formData: FormData): Promise<void> {
         video_provider_video_id: optional(formData.get("video_provider_video_id")),
         video_hls_path: optional(formData.get("video_hls_path")),
         video_qualities: formData.getAll("video_qualities").map(String),
+        audio_tracks: (parseJsonField(formData, "audio_tracks_json") ?? []) as unknown,
       });
 
       if (
@@ -377,6 +396,31 @@ export async function saveEpisode(formData: FormData): Promise<void> {
             "Видео ассет холбоход алдаа",
           );
         }
+      }
+
+      // Sync dub audio tracks (replace-all, mirrors movie subtitles/audio).
+      await db
+        .from("audio_tracks")
+        .delete()
+        .eq("content_type", "episode")
+        .eq("content_id", episodeId);
+      if (input.audio_tracks.length) {
+        must(
+          await db
+            .from("audio_tracks")
+            .insert(
+              input.audio_tracks.map((a) => ({
+                content_type: "episode",
+                content_id: episodeId,
+                language_id: a.language_id,
+                label: a.label,
+                url: a.url,
+                is_default: a.is_default,
+              })),
+            )
+            .select("id"),
+          "Дубляжийн дуу хадгалахад алдаа",
+        );
       }
 
       return {

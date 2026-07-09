@@ -36,6 +36,13 @@ const subtitleSchema = z.object({
   is_default: z.boolean(),
 });
 
+const audioTrackSchema = z.object({
+  language_id: z.string().uuid(),
+  label: z.string().min(1),
+  url: z.string().url("Дууны URL буруу байна"),
+  is_default: z.boolean(),
+});
+
 const movieSchema = z.object({
   id: z.string().uuid().optional(),
   title_mn: z.string().min(1, "Монгол нэр шаардлагатай"),
@@ -62,6 +69,7 @@ const movieSchema = z.object({
   crew_ids: z.array(z.string().uuid()),
   video: videoSchema.nullable(),
   subtitles: z.array(subtitleSchema),
+  audio_tracks: z.array(audioTrackSchema),
 });
 
 export type MovieInput = z.infer<typeof movieSchema>;
@@ -135,6 +143,7 @@ export async function saveMovie(
         crew_ids: (parseJson("crew_ids_json") ?? []) as unknown,
         video: parseJson("video_json"),
         subtitles: (parseJson("subtitles_json") ?? []) as unknown,
+        audio_tracks: (parseJson("audio_tracks_json") ?? []) as unknown,
       });
 
       // Publishing guard: only content with an approved, unexpired right goes live.
@@ -280,6 +289,31 @@ export async function saveMovie(
             )
             .select("id"),
           "Хадмал хадгалахад алдаа",
+        );
+      }
+
+      // Sync dub audio tracks (replace-all, mirrors subtitles).
+      await db
+        .from("audio_tracks")
+        .delete()
+        .eq("content_type", "movie")
+        .eq("content_id", movieId);
+      if (input.audio_tracks.length) {
+        must(
+          await db
+            .from("audio_tracks")
+            .insert(
+              input.audio_tracks.map((a) => ({
+                content_type: "movie",
+                content_id: movieId,
+                language_id: a.language_id,
+                label: a.label,
+                url: a.url,
+                is_default: a.is_default,
+              })),
+            )
+            .select("id"),
+          "Дубляжийн дуу хадгалахад алдаа",
         );
       }
 
@@ -459,6 +493,56 @@ export async function uploadImage(
       }
       const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
       const path = `${kind === "poster" ? "posters" : "backdrops"}/${crypto.randomUUID()}.${ext}`;
+
+      const { error } = await db.storage.from("media").upload(path, file, {
+        contentType: file.type,
+        upsert: false,
+      });
+      if (error) throw new AdminActionError(`Байршуулахад алдаа: ${error.message}`);
+
+      const { data } = db.storage.from("media").getPublicUrl(path);
+      revalidatePath("/admin/content");
+      return {
+        data: { url: data.publicUrl, path },
+        entityId: path,
+        details: { size: file.size, type: file.type },
+      };
+    },
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Dub audio upload to Supabase Storage ("media" bucket, audio/)       */
+/* ------------------------------------------------------------------ */
+
+const AUDIO_EXT_BY_TYPE: Record<string, string> = {
+  "audio/mpeg": "mp3",
+  "audio/mp4": "m4a",
+  "audio/aac": "aac",
+  "audio/ogg": "ogg",
+};
+const MAX_AUDIO_BYTES = 200 * 1024 * 1024;
+
+export async function uploadAudio(
+  formData: FormData,
+): Promise<ActionResult<{ url: string; path: string }>> {
+  return runAdminAction<{ url: string; path: string }>(
+    "content_manager",
+    "media.upload_audio",
+    "storage_object",
+    async ({ db }) => {
+      const file = formData.get("file");
+      if (!(file instanceof File) || file.size === 0) {
+        throw new AdminActionError("Файл сонгоно уу.");
+      }
+      const ext = AUDIO_EXT_BY_TYPE[file.type];
+      if (!ext) {
+        throw new AdminActionError("Зөвхөн MP3, M4A, AAC, OGG аудио файл зөвшөөрөгдөнө.");
+      }
+      if (file.size > MAX_AUDIO_BYTES) {
+        throw new AdminActionError("Аудио файлын хэмжээ 200MB-аас хэтэрч болохгүй.");
+      }
+      const path = `audio/${crypto.randomUUID()}.${ext}`;
 
       const { error } = await db.storage.from("media").upload(path, file, {
         contentType: file.type,

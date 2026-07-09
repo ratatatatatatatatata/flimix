@@ -3,6 +3,7 @@
 import { useActionState, useMemo, useState, useTransition } from "react";
 import { saveMovie, uploadImage, createCastMember, createCrewMember } from "./actions";
 import type { ActionResult } from "../_lib/adminAction";
+import { AudioTracksField, type AudioTrackDraft } from "../_components/AudioTracksField";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
@@ -46,6 +47,7 @@ export interface MovieFormProps {
   selectedCastIds: string[];
   selectedCrewIds: string[];
   subtitles: SubtitleDraft[];
+  audioTracks: AudioTrackDraft[];
   videoAsset: VideoAsset | null;
 }
 
@@ -488,6 +490,12 @@ export function MovieForm(props: MovieFormProps) {
         >
           <Plus className="h-3.5 w-3.5" aria-hidden /> Хадмал нэмэх
         </Button>
+      </fieldset>
+
+      {/* Dub audio */}
+      <fieldset className={sectionCls}>
+        <legend className={legendCls}>Дуу оруулах (дубляж)</legend>
+        <AudioTracksField languages={props.languages} initial={props.audioTracks} idPrefix="movie" />
       </fieldset>
 
       {/* Publishing */}

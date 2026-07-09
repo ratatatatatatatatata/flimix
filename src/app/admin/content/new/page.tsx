@@ -36,6 +36,7 @@ export default async function NewMoviePage() {
         selectedCastIds={[]}
         selectedCrewIds={[]}
         subtitles={[]}
+        audioTracks={[]}
         videoAsset={null}
       />
     </div>
