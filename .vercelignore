@@ -1,3 +1,6 @@
 # Mobile (Capacitor iOS) sub-project is built by Codemagic, not Vercel
 mobile
 codemagic.yaml
+# Cloudflare Worker (deployed with wrangler, not Vercel)
+workers
+workers/r2-video

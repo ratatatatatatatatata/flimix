@@ -20,7 +20,14 @@ import { Plus, Trash2 } from "lucide-react";
 
 const AGE_RATINGS = ["G", "PG", "PG-13", "R", "NC-17"] as const;
 const QUALITIES = ["360p", "480p", "720p", "1080p", "2160p"] as const;
-const PROVIDERS = ["bunny", "cloudflare", "aws", "mock"] as const;
+const PROVIDERS = ["bunny", "cloudflare", "aws", "mock", "r2"] as const;
+const PROVIDER_LABELS: Record<(typeof PROVIDERS)[number], string> = {
+  bunny: "bunny",
+  cloudflare: "cloudflare",
+  aws: "aws",
+  mock: "mock",
+  r2: "Cloudflare R2",
+};
 
 export interface SubtitleDraft {
   language_id: string;
@@ -357,7 +364,7 @@ export function MovieForm(props: MovieFormProps) {
                 className={selectCls}
               >
                 {PROVIDERS.map((p) => (
-                  <option key={p} value={p}>{p}</option>
+                  <option key={p} value={p}>{PROVIDER_LABELS[p]}</option>
                 ))}
               </select>
             </div>

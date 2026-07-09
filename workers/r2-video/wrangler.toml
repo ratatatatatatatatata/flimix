@@ -1,0 +1,19 @@
+name = "flimix-r2-video"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# Private R2 bucket that holds the HLS output (never make it public).
+[[r2_buckets]]
+binding = "VIDEOS"
+bucket_name = "flimix-videos"
+
+[vars]
+# (intentionally empty)
+# R2_TOKEN_SECRET is a SECRET, not a var. Set it with:
+#   wrangler secret put R2_TOKEN_SECRET
+# and use the SAME value as the Next.js app's R2_TOKEN_SECRET env.
+
+# Custom domain / route example (uncomment and adjust after adding the zone):
+# routes = [
+#   { pattern = "video.flimix.mn/*", zone_name = "flimix.mn" }
+# ]

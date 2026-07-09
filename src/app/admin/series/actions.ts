@@ -284,7 +284,7 @@ const episodeSchema = z.object({
   intro_start_seconds: z.coerce.number().int().min(0).nullable(),
   intro_end_seconds: z.coerce.number().int().min(0).nullable(),
   status: z.enum(["draft", "scheduled", "published"]),
-  video_provider: z.enum(["bunny", "cloudflare", "aws", "mock"]).nullable(),
+  video_provider: z.enum(["bunny", "cloudflare", "aws", "mock", "r2"]).nullable(),
   video_provider_video_id: z.string().nullable(),
   video_hls_path: z.string().nullable(),
   video_qualities: z.array(z.string()),

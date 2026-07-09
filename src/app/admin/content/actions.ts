@@ -23,7 +23,7 @@ const optional = (v: FormDataEntryValue | null): string | null => {
 };
 
 const videoSchema = z.object({
-  provider: z.enum(["bunny", "cloudflare", "aws", "mock"]),
+  provider: z.enum(["bunny", "cloudflare", "aws", "mock", "r2"]),
   provider_video_id: z.string().min(1, "Провайдерын видео ID шаардлагатай"),
   hls_path: z.string().min(1, "HLS зам шаардлагатай"),
   qualities: z.array(z.string()).min(1, "Дор хаяж нэг чанар сонгоно уу"),

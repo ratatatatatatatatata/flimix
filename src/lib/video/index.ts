@@ -2,6 +2,7 @@ import "server-only";
 import type { VideoAsset } from "@/types/db";
 import { bunnyProvider } from "./bunny";
 import { mockProvider } from "./mock";
+import { r2Provider } from "./r2";
 import type { SignedPlayback, VideoProvider } from "./types";
 
 export type { SignedPlayback, VideoProvider } from "./types";
@@ -9,6 +10,7 @@ export type { SignedPlayback, VideoProvider } from "./types";
 const providers: Partial<Record<VideoAsset["provider"], VideoProvider>> = {
   bunny: bunnyProvider,
   mock: mockProvider,
+  r2: r2Provider,
 };
 
 /**

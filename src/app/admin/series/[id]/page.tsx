@@ -96,6 +96,7 @@ function EpisodeForm({
               <option value="cloudflare">cloudflare</option>
               <option value="aws">aws</option>
               <option value="mock">mock</option>
+              <option value="r2">Cloudflare R2</option>
             </select>
           </div>
           <Input label="Провайдерын видео ID" name="video_provider_video_id" defaultValue={asset?.provider_video_id ?? ""} />

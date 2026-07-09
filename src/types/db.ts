@@ -170,7 +170,7 @@ export interface CrewMember {
 
 export interface VideoAsset {
   id: UUID;
-  provider: "bunny" | "cloudflare" | "aws" | "mock";
+  provider: "bunny" | "cloudflare" | "aws" | "mock" | "r2";
   provider_video_id: string;
   hls_path: string; // path/playlist relative to CDN host, no signature
   qualities: string[]; // ["360p","480p","720p","1080p"]
