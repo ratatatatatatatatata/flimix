@@ -29,6 +29,10 @@ param(
   [ValidateSet(360, 480, 720, 1080)]
   [int]$MaxHeight = 1080,
 
+  # Lowest rung to produce. Default 720 = skip 360p/480p.
+  [ValidateSet(360, 480, 720, 1080)]
+  [int]$MinHeight = 720,
+
   # Keep ./hls-out/{slug} after a successful upload (default: delete to save disk)
   [switch]$KeepLocal
 )
@@ -42,7 +46,7 @@ if (-not (Get-Command rclone -ErrorAction SilentlyContinue)) {
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # --- Step 1: transcode ---------------------------------------------------
-& (Join-Path $scriptDir "transcode-hls.ps1") -InputFile $InputFile -Slug $Slug -MaxHeight $MaxHeight
+& (Join-Path $scriptDir "transcode-hls.ps1") -InputFile $InputFile -Slug $Slug -MaxHeight $MaxHeight -MinHeight $MinHeight
 if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   Write-Error "Transcode failed - aborting upload."
 }
@@ -56,7 +60,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $outDir "master.m3u8"))) {
 Write-Host ""
 Write-Host "==> Uploading $outDir -> r2:flimix-videos/movies/$Slug" -ForegroundColor Cyan
 & rclone copy $outDir "r2:flimix-videos/movies/$Slug" `
-  --transfers 32 --checkers 16 `
+  --transfers 64 --checkers 16 `
   --s3-upload-concurrency 4 --s3-chunk-size 64M `
   --progress
 if ($LASTEXITCODE -ne 0) { Write-Error "rclone upload failed (exit $LASTEXITCODE)." }
@@ -73,6 +77,4 @@ if (-not $KeepLocal) {
 # --- Done: admin values ---------------------------------------------------
 Write-Host ""
 Write-Host "==> DONE. Enter these in the FLIMIX admin (Kino nemeh -> Video asset):" -ForegroundColor Yellow
-Write-Host "  Provider          : Cloudflare R2 (r2)"
-Write-Host "  Provider video ID : $Slug"
-Write-Host "  HLS path          : /movies/$Slug/master.m3u8"
+Write-Host " 
