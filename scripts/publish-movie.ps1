@@ -14,7 +14,7 @@
 
 .EXAMPLE
   .\scripts\publish-movie.ps1 -InputFile "D:\masters\my-movie.mp4" -Slug my-movie
-  .\scripts\publish-movie.ps1 -InputFile movie.mkv -Slug my-movie -MaxHeight 720 -KeepLocal
+  .\scripts\publish-movie.ps1 -InputFile movie.mkv -Slug my-movie -MinHeight 360 -KeepLocal
 #>
 [CmdletBinding()]
 param(
@@ -47,9 +47,6 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # --- Step 1: transcode ---------------------------------------------------
 & (Join-Path $scriptDir "transcode-hls.ps1") -InputFile $InputFile -Slug $Slug -MaxHeight $MaxHeight -MinHeight $MinHeight
-if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
-  Write-Error "Transcode failed - aborting upload."
-}
 
 $outDir = Join-Path (Get-Location) "hls-out/$Slug"
 if (-not (Test-Path -LiteralPath (Join-Path $outDir "master.m3u8"))) {
@@ -77,4 +74,6 @@ if (-not $KeepLocal) {
 # --- Done: admin values ---------------------------------------------------
 Write-Host ""
 Write-Host "==> DONE. Enter these in the FLIMIX admin (Kino nemeh -> Video asset):" -ForegroundColor Yellow
-Write-Host " 
+Write-Host "  Provider          : Cloudflare R2 (r2)"
+Write-Host "  Provider video ID : $Slug"
+Write-Host "  HLS path          : /movies/$Slug/master.m3u8"
