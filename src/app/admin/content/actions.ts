@@ -10,7 +10,7 @@ import {
   type ActionResult,
   type AdminDb,
 } from "../_lib/adminAction";
-import { RIGHTS_BLOCK_MESSAGE } from "../_lib/messages";
+import { RIGHTS_BLOCK_MESSAGE, contentRightsRequired } from "../_lib/messages";
 import type { CastMember, CrewMember, Movie } from "@/types/db";
 
 /* ------------------------------------------------------------------ */
@@ -147,7 +147,7 @@ export async function saveMovie(
       });
 
       // Publishing guard: only content with an approved, unexpired right goes live.
-      if (input.status === "published") {
+      if (input.status === "published" && contentRightsRequired()) {
         if (!input.id || !(await hasApprovedActiveRight(db, "movie", input.id))) {
           throw new AdminActionError(RIGHTS_BLOCK_MESSAGE);
         }
@@ -377,7 +377,7 @@ export async function togglePublishMovie(formData: FormData): Promise<void> {
         return { data: { published: false }, entityId: id, details: { title: movie.title_mn } };
       }
 
-      if (!(await hasApprovedActiveRight(db, "movie", id))) {
+      if (contentRightsRequired() && !(await hasApprovedActiveRight(db, "movie", id))) {
         throw new AdminActionError(RIGHTS_BLOCK_MESSAGE);
       }
       must(

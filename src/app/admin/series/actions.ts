@@ -9,7 +9,7 @@ import {
   AdminActionError,
   type AdminDb,
 } from "../_lib/adminAction";
-import { RIGHTS_BLOCK_MESSAGE } from "../_lib/messages";
+import { RIGHTS_BLOCK_MESSAGE, contentRightsRequired } from "../_lib/messages";
 
 const optional = (v: FormDataEntryValue | null): string | null => {
   const s = typeof v === "string" ? v.trim() : "";
@@ -90,7 +90,7 @@ export async function saveSeries(formData: FormData): Promise<void> {
         genre_ids: formData.getAll("genre_ids").map(String),
       });
 
-      if (input.status === "published") {
+      if (input.status === "published" && contentRightsRequired()) {
         if (!input.id || !(await hasApprovedActiveSeriesRight(db, input.id))) {
           throw new AdminActionError(RIGHTS_BLOCK_MESSAGE);
         }
