@@ -12,7 +12,8 @@ type Params = Promise<{ slug: string }>;
  * still render the full series detail page.
  */
 export default async function SeriesModalPage({ params }: { params: Params }) {
-  const { slug } = await params;
+  const { slug: rawSlug } = await params;
+  const slug = decodeURIComponent(rawSlug);
   const series = await getSeriesBySlug(slug);
   if (!series || series.status !== "published") notFound();
 

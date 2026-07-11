@@ -11,7 +11,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { RowSkeleton } from "@/components/ui/Skeletons";
 import { getSession } from "@/lib/auth";
 import { getSeriesBySlug, getSeriesCast, getSimilarSeries } from "@/lib/catalog";
-import { formatDuration, t } from "@/lib/i18n";
+import { formatDuration, t , formatAgeRating} from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 import type { Episode, Season, Series, WatchProgress } from "@/types/db";
 import { FavoriteButton } from "../../movie/FavoriteButton";
@@ -58,7 +58,8 @@ export async function generateMetadata({
 }: {
   params: Params;
 }): Promise<Metadata> {
-  const { slug } = await params;
+  const { slug: rawSlug } = await params;
+  const slug = decodeURIComponent(rawSlug);
   const series = await getSeries(slug);
   if (!series || series.status !== "published") return { title: t.notFound };
   return {
@@ -435,7 +436,7 @@ export default async function SeriesDetailPage({
               <Badge>
                 {seasons.length} {t.season.toLowerCase()}
               </Badge>
-              {series.age_rating ? <Badge tone="accent">{series.age_rating}</Badge> : null}
+              {series.age_rating ? <Badge tone="accent">{formatAgeRating(series.age_rating)}</Badge> : null}
             </div>
 
             {(series.genres ?? []).length > 0 ? (

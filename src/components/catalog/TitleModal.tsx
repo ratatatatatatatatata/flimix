@@ -8,7 +8,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Play, X } from "lucide-react";
 import { FavoriteButton } from "@/app/(public)/movie/FavoriteButton";
 import { Badge } from "@/components/ui/Badge";
-import { formatDuration, t } from "@/lib/i18n";
+import { formatDuration, t , formatAgeRating} from "@/lib/i18n";
 
 export interface TitleModalPerson {
   id: string;
@@ -234,7 +234,7 @@ export function TitleModal({
             {metaBadges.map((label) => (
               <Badge key={label}>{label}</Badge>
             ))}
-            {data.ageRating ? <Badge tone="accent">{data.ageRating}</Badge> : null}
+            {data.ageRating ? <Badge tone="accent">{formatAgeRating(data.ageRating)}</Badge> : null}
             {data.isFree ? <Badge tone="success">Үнэгүй</Badge> : null}
             {data.genres.map((g) => (
               <Badge key={g.id}>{g.name}</Badge>
@@ -245,6 +245,32 @@ export function TitleModal({
             <p className="mt-4 line-clamp-5 text-sm leading-relaxed text-mist-300">
               {data.description}
             </p>
+          ) : null}
+
+          {/* Inline trailer below the synopsis whenever one exists. */}
+          {data.trailerUrl ? (
+            <div className="mt-5">
+              <h3 className="mb-2 text-sm font-semibold text-white">{t.watchTrailer}</h3>
+              <div className="aspect-video w-full overflow-hidden rounded-xl bg-ink-900">
+                {embedUrl ? (
+                  <iframe
+                    src={embedUrl}
+                    title={`${data.title} — трейлер`}
+                    allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    className="h-full w-full"
+                  />
+                ) : (
+                  <video
+                    src={data.trailerUrl}
+                    controls
+                    preload="metadata"
+                    poster={data.backdropUrl ?? undefined}
+                    className="h-full w-full"
+                  />
+                )}
+              </div>
+            </div>
           ) : null}
 
           {/* ------------------------------ actions ---------------------------- */}

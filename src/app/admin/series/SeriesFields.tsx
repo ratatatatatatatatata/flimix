@@ -1,4 +1,5 @@
 import { Input } from "@/components/ui/Input";
+import { AGE_RATING_LABELS } from "@/lib/i18n";
 import type { Country, Genre, Series } from "@/types/db";
 
 const AGE_RATINGS = ["G", "PG", "PG-13", "R", "NC-17"] as const;
@@ -66,7 +67,7 @@ export function SeriesFields({
           <select id="s_age_rating" name="age_rating" defaultValue={series?.age_rating ?? ""} className={selectCls}>
             <option value="">— Сонгох —</option>
             {AGE_RATINGS.map((r) => (
-              <option key={r} value={r}>{r}</option>
+              <option key={r} value={r}>{AGE_RATING_LABELS[r] ?? r}</option>
             ))}
           </select>
         </div>

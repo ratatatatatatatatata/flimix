@@ -9,14 +9,15 @@
     720p/index.m3u8  + seg_0000.ts ...   (2800k)
     480p/index.m3u8  + seg_0000.ts ...   (1400k)
     360p/index.m3u8  + seg_0000.ts ...   (800k)
-  h264 + aac, 6-second segments, VOD playlists. Variants above -MaxHeight are skipped.
+  h264 + aac, 6-second segments, VOD playlists.
+  Rungs outside -MinHeight..-MaxHeight are skipped (default: 720p + 1080p only).
 
   NOTE: keep this file ASCII-only. Windows PowerShell 5.1 misreads BOM-less
   UTF-8 scripts, and non-ASCII strings break parsing.
 
 .EXAMPLE
   .\scripts\transcode-hls.ps1 -InputFile "D:\masters\tom-yum.mkv" -Slug tom-yum
-  .\scripts\transcode-hls.ps1 -InputFile movie.mp4 -Slug my-movie -MaxHeight 720
+  .\scripts\transcode-hls.ps1 -InputFile movie.mp4 -Slug my-movie -MinHeight 360
 #>
 [CmdletBinding()]
 param(
@@ -131,7 +132,10 @@ Write-Host "==> Done: $outDir" -ForegroundColor Green
 Write-Host ""
 Write-Host "Next step - upload to R2 (rclone setup: docs/14-r2-video.md):" -ForegroundColor Yellow
 Write-Host ""
-Write-Host "  rclone copy ./hls-out/$Slug r2:flimix-videos/movies/$Slug --transfers 8 --progress"
+Write-Host "  rclone copy ./hls-out/$Slug r2:flimix-videos/movies/$Slug --transfers 64 --progress"
 Write-Host ""
 Write-Host "Admin video asset values:" -ForegroundColor Yellow
-Write-Host "  Provider          : Cloudflare
+Write-Host "  Provider          : Cloudflare R2 (r2)"
+Write-Host "  Provider video ID : $Slug"
+Write-Host "  HLS path          : /movies/$Slug/master.m3u8"
+Write-Host "  Qualities         : $(($ladder | ForEach-Object { $_.Name }) -join ', ')"

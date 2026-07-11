@@ -11,7 +11,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { RowSkeleton } from "@/components/ui/Skeletons";
 import { getSession } from "@/lib/auth";
 import { getMovieBySlug, getMovieCredits, getSimilarMovies } from "@/lib/catalog";
-import { formatDuration, t } from "@/lib/i18n";
+import { formatDuration, t , formatAgeRating} from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 import type { Movie } from "@/types/db";
 import { FavoriteButton } from "../FavoriteButton";
@@ -33,7 +33,8 @@ export async function generateMetadata({
 }: {
   params: Params;
 }): Promise<Metadata> {
-  const { slug } = await params;
+  const { slug: rawSlug } = await params;
+  const slug = decodeURIComponent(rawSlug);
   const movie = await getMovie(slug);
   if (!movie || movie.status !== "published") return { title: t.notFound };
   return {
@@ -234,7 +235,8 @@ async function SimilarMoviesRow({
 /* ---------------------------------- page ----------------------------------- */
 
 export default async function MovieDetailPage({ params }: { params: Params }) {
-  const { slug } = await params;
+  const { slug: rawSlug } = await params;
+  const slug = decodeURIComponent(rawSlug);
   const movie = await getMovie(slug);
   if (!movie) notFound();
   if (movie.status !== "published") return <UnavailableNotice />;
@@ -291,7 +293,7 @@ export default async function MovieDetailPage({ params }: { params: Params }) {
               {movie.duration_seconds ? (
                 <Badge>{formatDuration(movie.duration_seconds)}</Badge>
               ) : null}
-              {movie.age_rating ? <Badge tone="accent">{movie.age_rating}</Badge> : null}
+              {movie.age_rating ? <Badge tone="accent">{formatAgeRating(movie.age_rating)}</Badge> : null}
               {movie.country ? <Badge>{movie.country.name_mn}</Badge> : null}
               {movie.is_free ? <Badge tone="success">Үнэгүй</Badge> : null}
             </div>

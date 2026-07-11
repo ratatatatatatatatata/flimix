@@ -12,7 +12,8 @@ type Params = Promise<{ slug: string }>;
  * still render the full movie detail page.
  */
 export default async function MovieModalPage({ params }: { params: Params }) {
-  const { slug } = await params;
+  const { slug: rawSlug } = await params;
+  const slug = decodeURIComponent(rawSlug);
   const movie = await getMovieBySlug(slug);
   if (!movie || movie.status !== "published") notFound();
 

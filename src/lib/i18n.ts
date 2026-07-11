@@ -141,3 +141,17 @@ export function formatShortDateMn(iso: string): string {
   if (Number.isNaN(d.getTime())) return "";
   return `${d.getMonth() + 1}-р сарын ${d.getDate()}`;
 }
+
+/** Friendly Mongolian age-rating labels (stored values stay MPAA codes). */
+export const AGE_RATING_LABELS: Record<string, string> = {
+  "G": "Бүх насны",
+  "PG": "6+",
+  "PG-13": "13+",
+  "R": "16+",
+  "NC-17": "18+",
+};
+
+export function formatAgeRating(rating: string | null | undefined): string | null {
+  if (!rating) return null;
+  return AGE_RATING_LABELS[rating] ?? rating;
+}

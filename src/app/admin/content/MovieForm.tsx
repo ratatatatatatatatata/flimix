@@ -1,5 +1,7 @@
 "use client";
 
+import { AGE_RATING_LABELS } from "@/lib/i18n";
+
 import { useActionState, useMemo, useState, useTransition } from "react";
 import { saveMovie, uploadImage, createCastMember, createCrewMember } from "./actions";
 import type { ActionResult } from "../_lib/adminAction";
@@ -263,7 +265,7 @@ export function MovieForm(props: MovieFormProps) {
             <select id="age_rating" name="age_rating" defaultValue={movie?.age_rating ?? ""} className={selectCls}>
               <option value="">— Сонгох —</option>
               {AGE_RATINGS.map((r) => (
-                <option key={r} value={r}>{r}</option>
+                <option key={r} value={r}>{AGE_RATING_LABELS[r] ?? r}</option>
               ))}
             </select>
           </div>
