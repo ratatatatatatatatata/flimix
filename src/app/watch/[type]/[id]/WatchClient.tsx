@@ -127,15 +127,17 @@ export function WatchClient({
 
   return (
     <div className="relative h-dvh w-full bg-black">
-      {/* Back to detail page */}
-      <Link
+      {/* Back to detail page. Plain <a> on purpose: a hard navigation
+          bypasses the (.)movie/(.)series route interception, which 404s when
+          soft-navigating out of /watch (it lives outside the (public) group). */}
+      <a
         href={backHref}
         className="absolute left-4 top-4 z-40 inline-flex items-center gap-2 rounded-lg bg-black/60 px-3 py-2 text-sm text-mist-100 backdrop-blur transition hover:bg-black/80 hover:text-white"
         aria-label={t.back}
       >
         <ArrowLeft className="h-4 w-4" aria-hidden="true" />
         <span className="hidden sm:inline">{t.back}</span>
-      </Link>
+      </a>
 
       {state.kind === "loading" ? (
         <div className="flex h-full items-center justify-center">
@@ -165,12 +167,12 @@ export function WatchClient({
             >
               {t.choosePlan}
             </Link>
-            <Link
+            <a
               href={backHref}
               className="inline-flex items-center justify-center rounded-lg border border-ink-600 bg-ink-700 px-5 py-2.5 text-sm font-medium text-mist-100 transition hover:border-royal-500/60"
             >
               {t.back}
-            </Link>
+            </a>
           </div>
         </div>
       ) : null}
