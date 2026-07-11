@@ -109,7 +109,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     .maybeSingle();
   const subscription = subRow as SubscriptionWithPlan | null;
 
-  if (!isFree && !subscription) {
+  // Launch mode: while REQUIRE_SUBSCRIPTION !== "true" every title plays free.
+  const subscriptionRequired = process.env.REQUIRE_SUBSCRIPTION === "true";
+  if (subscriptionRequired && !isFree && !subscription) {
     return NextResponse.json({ error: t.subscriptionRequired }, { status: 403 });
   }
 
