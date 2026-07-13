@@ -612,8 +612,8 @@ export function VideoPlayer({
 
       {/* Dub audio: replaces the original soundtrack while present */}
       {activeDub ? (
-        {/* No crossOrigin here: plain media playback needs no CORS, and adding
-            it makes the browser reject CDN hosts that don't send CORS headers. */}
+        // No crossOrigin here: plain media playback needs no CORS, and adding
+        // it makes the browser reject CDN hosts that don't send CORS headers.
         <audio
           ref={audioRef}
           src={activeDub.src}
