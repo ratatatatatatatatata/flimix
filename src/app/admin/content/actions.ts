@@ -38,7 +38,7 @@ const subtitleSchema = z.object({
 
 const audioTrackSchema = z.object({
   language_id: z.string().uuid(),
-  label: z.string().min(1),
+  label: z.string().transform((v) => v.trim() || "Дубляж"),
   url: z.string().url("Дууны URL буруу байна"),
   is_default: z.boolean(),
 });
@@ -189,6 +189,28 @@ export async function saveMovie(
         ) as { id: string };
         movieId = updated.id;
       } else {
+        // Slug conflict: soft-deleted movies keep their row (and slug). If a
+        // deleted movie holds this slug, rename its slug to free it up; if a
+        // live movie holds it, surface a clear error instead of a raw
+        // duplicate-key failure.
+        const { data: slugHolder } = await db
+          .from("movies")
+          .select("id, deleted_at")
+          .eq("slug", input.slug)
+          .maybeSingle();
+        const holder = slugHolder as { id: string; deleted_at: string | null } | null;
+        if (holder) {
+          if (holder.deleted_at) {
+            await db
+              .from("movies")
+              .update({ slug: `${input.slug}-deleted-${Date.now()}` })
+              .eq("id", holder.id);
+          } else {
+            throw new AdminActionError(
+              "Энэ slug-тай кино аль хэдийн байна. Өөр slug сонгоно уу.",
+            );
+          }
+        }
         const inserted = must(
           await db.from("movies").insert(row).select("id").single(),
           "Кино үүсгэхэд алдаа",

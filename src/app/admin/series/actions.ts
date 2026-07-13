@@ -257,7 +257,7 @@ export async function deleteSeason(formData: FormData): Promise<void> {
 
 const audioTrackSchema = z.object({
   language_id: z.string().uuid(),
-  label: z.string().min(1),
+  label: z.string().transform((v) => v.trim() || "Дубляж"),
   url: z.string().url("Дууны URL буруу байна"),
   is_default: z.boolean(),
 });

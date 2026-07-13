@@ -62,9 +62,17 @@ export function AudioTracksField({ languages, initial, idPrefix }: AudioTracksFi
     });
   };
 
+  // Fallback: empty label becomes "<Language> дубляж" so validation never trips.
+  const serialized = tracks.map((t) => ({
+    ...t,
+    label:
+      t.label.trim() ||
+      `${languages.find((l) => l.id === t.language_id)?.name_mn ?? "Монгол"} дубляж`,
+  }));
+
   return (
     <div className="space-y-3">
-      <input type="hidden" name="audio_tracks_json" value={JSON.stringify(tracks)} />
+      <input type="hidden" name="audio_tracks_json" value={JSON.stringify(serialized)} />
       <p className="text-xs text-mist-500">
         Дуу оруулбал киноны эх дууг бүрэн орлуулж тоглоно. MP3, M4A, AAC, OGG (≤200MB) файл
         байршуулах эсвэл Bunny/CDN URL шууд оруулна.
