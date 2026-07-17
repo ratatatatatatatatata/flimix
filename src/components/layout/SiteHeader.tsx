@@ -120,15 +120,17 @@ export async function SiteHeader() {
             </>
           ) : (
             <>
+              {/* Mobile: primary CTA = Нэвтрэх (register lives below the login form).
+                  Desktop: text Нэвтрэх + filled Бүртгүүлэх. */}
               <Link
                 href="/login"
-                className="hidden text-sm text-mist-300 transition hover:text-white sm:block"
+                className="rounded-lg bg-royal-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-royal-600 sm:rounded-none sm:bg-transparent sm:px-0 sm:py-0 sm:font-normal sm:text-mist-300 sm:hover:bg-transparent sm:hover:text-white"
               >
                 {t.signIn}
               </Link>
               <Link
                 href="/register"
-                className="rounded-lg bg-royal-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-royal-600"
+                className="hidden rounded-lg bg-royal-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-royal-600 sm:block"
               >
                 {t.signUp}
               </Link>
