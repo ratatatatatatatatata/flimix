@@ -54,6 +54,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // Load content + playback asset (admin client: asset paths are not public).
   let playbackAssetId: string | null = null;
   let isFree = false;
+  let rentalPriceMnt: number | null = null;
   if (contentType === "movie") {
     const { data } = await admin
       .from("movies")
@@ -68,6 +69,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
     playbackAssetId = movie.playback_asset_id;
     isFree = movie.is_free;
+    rentalPriceMnt = movie.rental_price_mnt ?? null;
   } else {
     const { data } = await admin
       .from("episodes")
@@ -109,10 +111,29 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     .maybeSingle();
   const subscription = subRow as SubscriptionWithPlan | null;
 
-  // Launch mode: while REQUIRE_SUBSCRIPTION !== "true" every title plays free.
-  const subscriptionRequired = process.env.REQUIRE_SUBSCRIPTION === "true";
-  if (subscriptionRequired && !isFree && !subscription) {
-    return NextResponse.json({ error: t.subscriptionRequired }, { status: 403 });
+  // Rental-gated movie: needs an unexpired purchase regardless of
+  // subscription status (free titles stay free).
+  if (rentalPriceMnt !== null && rentalPriceMnt > 0 && !isFree) {
+    const { data: purchaseRow } = await admin
+      .from("movie_purchases")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("movie_id", contentId)
+      .gt("expires_at", new Date().toISOString())
+      .limit(1)
+      .maybeSingle();
+    if (!purchaseRow) {
+      return NextResponse.json(
+        { error: "Энэ киног үзэхийн тулд түрээслэх шаардлагатай." },
+        { status: 403 },
+      );
+    }
+  } else {
+    // Launch mode: while REQUIRE_SUBSCRIPTION !== "true" every title plays free.
+    const subscriptionRequired = process.env.REQUIRE_SUBSCRIPTION === "true";
+    if (subscriptionRequired && !isFree && !subscription) {
+      return NextResponse.json({ error: t.subscriptionRequired }, { status: 403 });
+    }
   }
 
   // Concurrent stream limit per plan.

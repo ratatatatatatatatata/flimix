@@ -2,7 +2,7 @@ import { requireRole } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { notFound } from "next/navigation";
 import { SectionFields } from "../SectionFields";
-import { saveSection, addSectionItem, removeSectionItem, moveSectionItem } from "../actions";
+import { saveSection, addSectionItem, addSectionItemsBulk, removeSectionItem, moveSectionItem } from "../actions";
 import { MessageBanner } from "../../_components/MessageBanner";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -57,6 +57,37 @@ export default async function EditSectionPage({
   const titleMap = new Map<string, TitleRow>();
   for (const m of (itemMovies.data ?? []) as TitleRow[]) titleMap.set(`movie:${m.id}`, m);
   for (const s of (itemSeries.data ?? []) as TitleRow[]) titleMap.set(`series:${s.id}`, s);
+
+  // Full catalog checklist (published, not yet in the section).
+  const existingKeys = new Set(items.map((i) => `${i.content_type}:${i.content_id}`));
+  const [allMoviesRes, allSeriesRes] = await Promise.all([
+    db
+      .from("movies")
+      .select("id,title_mn")
+      .eq("status", "published")
+      .is("deleted_at", null)
+      .order("title_mn")
+      .limit(300),
+    db
+      .from("series")
+      .select("id,title_mn")
+      .eq("status", "published")
+      .is("deleted_at", null)
+      .order("title_mn")
+      .limit(300),
+  ]);
+  const pickerOptions = [
+    ...((allMoviesRes.data ?? []) as { id: string; title_mn: string }[]).map((m) => ({
+      value: `movie:${m.id}`,
+      label: m.title_mn,
+      kind: "Кино",
+    })),
+    ...((allSeriesRes.data ?? []) as { id: string; title_mn: string }[]).map((s) => ({
+      value: `series:${s.id}`,
+      label: s.title_mn,
+      kind: "Цуврал",
+    })),
+  ].filter((o) => !existingKeys.has(o.value));
 
   // Search results for the picker.
   let results: { value: string; label: string }[] = [];
@@ -143,6 +174,37 @@ export default async function EditSectionPage({
                 ))}
               </ul>
             )
+          ) : null}
+
+          {pickerOptions.length > 0 ? (
+            <details className="rounded-lg border border-ink-600 bg-ink-900/60">
+              <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-mist-100">
+                Бүх контентоос сонгож нэмэх ({pickerOptions.length})
+              </summary>
+              <form action={addSectionItemsBulk} className="space-y-3 px-4 pb-4">
+                <input type="hidden" name="section_id" value={section.id} />
+                <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-ink-700 bg-ink-900 p-2">
+                  {pickerOptions.map((o) => (
+                    <label
+                      key={o.value}
+                      className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm text-mist-300 hover:bg-ink-800"
+                    >
+                      <input
+                        type="checkbox"
+                        name="contents"
+                        value={o.value}
+                        className="h-3.5 w-3.5 accent-royal-500"
+                      />
+                      {o.label}
+                      <span className="text-xs text-mist-500">{o.kind}</span>
+                    </label>
+                  ))}
+                </div>
+                <Button type="submit" variant="secondary" size="sm">
+                  Сонгосныг нэмэх
+                </Button>
+              </form>
+            </details>
           ) : null}
 
           {items.length === 0 ? (

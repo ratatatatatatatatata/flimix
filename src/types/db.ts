@@ -92,6 +92,10 @@ export interface Movie {
   popularity: number;
   rating: number | null;
   is_free: boolean;
+  /** Түрээсийн үнэ (₮). null = түрээсгүй, багцын эрхээр үзнэ. */
+  rental_price_mnt: number | null;
+  /** Түрээсийн хугацаа (цаг). */
+  rental_hours: number;
   status: ContentStatus;
   published_at: string | null;
   created_at: string;
@@ -100,6 +104,16 @@ export interface Movie {
   // joined
   genres?: Genre[];
   country?: Country | null;
+}
+
+export interface MoviePurchase {
+  id: UUID;
+  user_id: UUID;
+  movie_id: UUID;
+  payment_id: UUID | null;
+  amount_mnt: number;
+  expires_at: string;
+  created_at: string;
 }
 
 export interface Series {

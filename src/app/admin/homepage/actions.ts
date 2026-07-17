@@ -237,6 +237,59 @@ export async function addSectionItem(formData: FormData): Promise<void> {
   );
 }
 
+/** Bulk add: checkbox list of movies/series from the section editor. */
+export async function addSectionItemsBulk(formData: FormData): Promise<void> {
+  const sectionId = z.string().uuid().parse(formData.get("section_id"));
+  const back = `/admin/homepage/${sectionId}`;
+  const result = await runAdminAction<null>(
+    "content_manager",
+    "homepage_section_item.add_bulk",
+    "homepage_section_item",
+    async ({ db }) => {
+      const contents = z
+        .array(z.string().regex(/^(movie|series):[0-9a-f-]{36}$/i))
+        .min(1, "Дор хаяж нэг контент сонгоно уу")
+        .parse(formData.getAll("contents").map(String));
+
+      const { data: existingRows } = await db
+        .from("homepage_section_items")
+        .select("content_type, content_id, sort_order")
+        .eq("section_id", sectionId);
+      const existing = (existingRows ?? []) as {
+        content_type: string;
+        content_id: string;
+        sort_order: number;
+      }[];
+      const existingKeys = new Set(existing.map((r) => `${r.content_type}:${r.content_id}`));
+      let nextOrder = existing.reduce((max, r) => Math.max(max, r.sort_order), 0) + 1;
+
+      const rows = contents
+        .filter((c) => !existingKeys.has(c.toLowerCase()))
+        .map((c) => {
+          const [contentType, contentId] = c.split(":") as ["movie" | "series", string];
+          return {
+            section_id: sectionId,
+            content_type: contentType,
+            content_id: contentId,
+            sort_order: nextOrder++,
+          };
+        });
+      if (rows.length > 0) {
+        must(
+          await db.from("homepage_section_items").insert(rows).select("id"),
+          "Нэмэхэд алдаа",
+        );
+      }
+      return { data: null, entityId: sectionId, details: { added: rows.length } };
+    },
+  );
+  revalidatePath(back);
+  revalidatePath("/");
+  redirect(
+    result.ok ? withParam(back, "message", "Контентууд нэмэгдлээ.") : withParam(back, "error", result.error),
+  );
+}
+
 export async function removeSectionItem(formData: FormData): Promise<void> {
   const sectionId = z.string().uuid().parse(formData.get("section_id"));
   const back = `/admin/homepage/${sectionId}`;

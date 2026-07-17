@@ -11,6 +11,7 @@ import {
   Play,
   PictureInPicture2,
   RotateCcw,
+  RotateCw,
   SkipForward,
   SlidersHorizontal,
   Subtitles as SubtitlesIcon,
@@ -163,14 +164,15 @@ export function VideoPlayer({
       hlsRef.current = null;
     }
 
-    if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = hlsUrl;
-      video.load();
-      return;
-    }
-
+    // Prefer hls.js wherever MSE exists so the manual quality selector works;
+    // fall back to native HLS (Safari on iPhone) only when hls.js cannot run.
     const { default: HlsCtor } = await import("hls.js");
     if (!HlsCtor.isSupported()) {
+      if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        video.src = hlsUrl;
+        video.load();
+        return;
+      }
       setErrored(true);
       return;
     }
@@ -496,7 +498,9 @@ export function VideoPlayer({
   /** Tap = toggle controls; double-tap left/right = seek (touch devices). */
   const onSurfacePointerUp = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (event.pointerType !== "touch") {
+      // Only a real mouse click toggles play/pause. Touch (and unknown
+      // pointer types) never pause: taps just show/hide the controls.
+      if (event.pointerType === "mouse") {
         togglePlay();
         showControls();
         return;
@@ -765,6 +769,17 @@ export function VideoPlayer({
         <div className="flex items-center gap-1 sm:gap-2">
           <button
             type="button"
+            onClick={() => seekBy(-SEEK_STEP_SECONDS)}
+            className="relative rounded-md p-2 text-white transition hover:bg-white/10"
+            aria-label="10 секунд ухраах"
+          >
+            <RotateCcw className="h-5 w-5" aria-hidden="true" />
+            <span className="pointer-events-none absolute inset-0 flex items-center justify-center pt-0.5 text-[8px] font-bold">
+              10
+            </span>
+          </button>
+          <button
+            type="button"
             onClick={togglePlay}
             className="rounded-md p-2 text-white transition hover:bg-white/10"
             aria-label={playing ? "Түр зогсоох" : "Тоглуулах"}
@@ -774,6 +789,17 @@ export function VideoPlayer({
             ) : (
               <Play className="h-6 w-6" aria-hidden="true" />
             )}
+          </button>
+          <button
+            type="button"
+            onClick={() => seekBy(SEEK_STEP_SECONDS)}
+            className="relative rounded-md p-2 text-white transition hover:bg-white/10"
+            aria-label="10 секунд урагшлуулах"
+          >
+            <RotateCw className="h-5 w-5" aria-hidden="true" />
+            <span className="pointer-events-none absolute inset-0 flex items-center justify-center pt-0.5 text-[8px] font-bold">
+              10
+            </span>
           </button>
 
           {/* Volume */}

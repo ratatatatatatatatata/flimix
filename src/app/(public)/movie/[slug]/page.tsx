@@ -151,26 +151,50 @@ async function MovieActions({
   movie,
   detailPath,
 }: {
-  movie: Pick<Movie, "id" | "is_free" | "trailer_url">;
+  movie: Pick<Movie, "id" | "is_free" | "trailer_url" | "rental_price_mnt">;
   detailPath: string;
 }) {
   const session = await getSession();
   let isFavorited = false;
+  let hasRental = false;
   if (session) {
     const db = await createClient();
-    const { data } = await db
-      .from("favorites")
-      .select("id")
-      .eq("user_id", session.userId)
-      .eq("movie_id", movie.id)
-      .maybeSingle();
-    isFavorited = !!data;
+    const [{ data: fav }, { data: purchase }] = await Promise.all([
+      db
+        .from("favorites")
+        .select("id")
+        .eq("user_id", session.userId)
+        .eq("movie_id", movie.id)
+        .maybeSingle(),
+      movie.rental_price_mnt
+        ? db
+            .from("movie_purchases")
+            .select("id")
+            .eq("user_id", session.userId)
+            .eq("movie_id", movie.id)
+            .gt("expires_at", new Date().toISOString())
+            .limit(1)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+    isFavorited = !!fav;
+    hasRental = !!purchase;
   }
-  const canWatchDirectly = !!session || movie.is_free;
+  const rentalGated = Boolean(movie.rental_price_mnt) && !movie.is_free;
+  const canWatchDirectly = rentalGated
+    ? hasRental
+    : !!session || movie.is_free;
 
   return (
     <>
-      {canWatchDirectly ? (
+      {rentalGated && !hasRental ? (
+        <Link
+          href={session ? `/rent/${movie.id}` : `/login?next=${encodeURIComponent(`/rent/${movie.id}`)}`}
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-royal-500 px-7 py-3 text-base font-medium text-white shadow-accent transition hover:bg-royal-600"
+        >
+          Түрээслэх — {new Intl.NumberFormat("mn-MN").format(movie.rental_price_mnt ?? 0)}₮
+        </Link>
+      ) : canWatchDirectly ? (
         <Link
           href={`/watch/movie/${movie.id}`}
           className="inline-flex items-center justify-center gap-2 rounded-lg bg-royal-500 px-7 py-3 text-base font-medium text-white shadow-accent transition hover:bg-royal-600"
@@ -332,6 +356,7 @@ export default async function MovieDetailPage({ params }: { params: Params }) {
                     id: movie.id,
                     is_free: movie.is_free,
                     trailer_url: movie.trailer_url,
+                    rental_price_mnt: movie.rental_price_mnt ?? null,
                   }}
                   detailPath={detailPath}
                 />

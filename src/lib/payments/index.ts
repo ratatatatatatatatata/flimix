@@ -176,6 +176,109 @@ export async function createInvoice(input: CreateInvoiceInput): Promise<InvoiceR
   };
 }
 
+/**
+ * Rental checkout: creates a pending payment for a single movie. Applied in
+ * verifyAndApplyPayment via metadata.movie_id (mirrors the plan flow).
+ */
+export async function createRentalInvoice(input: {
+  userId: string;
+  movieId: string;
+  provider: PaymentProvider;
+}): Promise<InvoiceResult> {
+  const { userId, movieId, provider } = input;
+  const adapter = getAdapter(provider);
+  const admin = createAdminClient();
+
+  const { data: movieRow, error: movieError } = await admin
+    .from("movies")
+    .select("id, title_mn, rental_price_mnt")
+    .eq("id", movieId)
+    .eq("status", "published")
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (movieError) throw new Error(`Movie lookup failed: ${movieError.message}`);
+  const movie = movieRow as
+    | { id: string; title_mn: string; rental_price_mnt: number | null }
+    | null;
+  if (!movie || movie.rental_price_mnt === null || movie.rental_price_mnt <= 0) {
+    throw new Error("Энэ кино түрээсээр үзэх боломжгүй байна");
+  }
+
+  const { data: paymentRow, error: paymentError } = await admin
+    .from("payments")
+    .insert({
+      user_id: userId,
+      provider,
+      amount_mnt: movie.rental_price_mnt,
+      status: "pending" satisfies PaymentStatus,
+    })
+    .select("*")
+    .single();
+  if (paymentError) {
+    throw new Error(`Payment insert failed: ${paymentError.message}`);
+  }
+  const payment = paymentRow as Payment;
+
+  const metadata: AttemptMetadata = {
+    plan_id: null,
+    movie_id: movie.id,
+    promo_code_id: null,
+    bonus_days: 0,
+    discount_percent: 0,
+  };
+
+  const { data: attemptRow, error: attemptError } = await admin
+    .from("payment_attempts")
+    .insert({
+      payment_id: payment.id,
+      provider,
+      status: "created",
+      request_payload: metadata,
+    })
+    .select("id")
+    .single();
+  if (attemptError) {
+    throw new Error(`Payment attempt insert failed: ${attemptError.message}`);
+  }
+  const attemptId = (attemptRow as { id: string }).id;
+
+  let invoice: ProviderInvoice;
+  try {
+    invoice = await adapter.createInvoice({
+      payment,
+      plan: null,
+      description: `FLIMIX түрээс — ${movie.title_mn}`,
+    });
+  } catch (err) {
+    await admin
+      .from("payment_attempts")
+      .update({ status: "failed", response_payload: { error: String(err) } })
+      .eq("id", attemptId);
+    await admin.from("payments").update({ status: "failed" }).eq("id", payment.id);
+    throw err;
+  }
+
+  await admin
+    .from("payments")
+    .update({ external_id: invoice.externalId })
+    .eq("id", payment.id);
+  await admin
+    .from("payment_attempts")
+    .update({
+      external_id: invoice.externalId,
+      response_payload: invoice.raw ?? {},
+    })
+    .eq("id", attemptId);
+
+  return {
+    paymentId: payment.id,
+    checkoutUrl: invoice.checkoutUrl,
+    qrText: invoice.qrText,
+    deeplinks: invoice.deeplinks,
+    instructions: invoice.instructions,
+  };
+}
+
 function buildReceiptNumber(paymentId: string, paidAt: Date): string {
   // FLX-{year}-{short id}: the payment UUID prefix acts as a collision-safe
   // short sequence without needing a dedicated counter table.
@@ -321,6 +424,27 @@ export async function verifyAndApplyPayment(paymentId: string): Promise<PaymentS
     }
   }
 
+  // Rental checkout: grant a timed movie purchase instead of a subscription.
+  const rentalMovieId = metadata?.movie_id ?? null;
+  if (rentalMovieId) {
+    const { data: movieRow } = await admin
+      .from("movies")
+      .select("id, rental_hours")
+      .eq("id", rentalMovieId)
+      .maybeSingle();
+    const rentalHours =
+      (movieRow as { rental_hours: number | null } | null)?.rental_hours ?? 48;
+    await admin.from("movie_purchases").insert({
+      user_id: payment.user_id,
+      movie_id: rentalMovieId,
+      payment_id: payment.id,
+      amount_mnt: payment.amount_mnt,
+      expires_at: new Date(
+        paidAt.getTime() + rentalHours * 60 * 60 * 1000,
+      ).toISOString(),
+    });
+  }
+
   if (metadata?.promo_code_id) {
     const { data: promoRow } = await admin
       .from("promo_codes")
@@ -339,7 +463,9 @@ export async function verifyAndApplyPayment(paymentId: string): Promise<PaymentS
   await admin.from("notifications").insert({
     user_id: payment.user_id,
     title_mn: "Төлбөр амжилттай",
-    body_mn: "Таны төлбөр баталгаажиж, багц идэвхжлээ. FLIMIX-ээр сайхан хугацаа өнгөрүүлээрэй!",
+    body_mn: rentalMovieId
+      ? "Таны төлбөр баталгаажиж, киноны түрээс идэвхжлээ. Сайхан үзээрэй!"
+      : "Таны төлбөр баталгаажиж, багц идэвхжлээ. FLIMIX-ээр сайхан хугацаа өнгөрүүлээрэй!",
     type: "payment",
   });
 

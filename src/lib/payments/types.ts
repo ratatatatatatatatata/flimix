@@ -44,7 +44,8 @@ export interface ProviderCheckResult {
 
 export interface AdapterInvoiceContext {
   payment: Payment;
-  plan: SubscriptionPlan;
+  /** Subscription checkout only; rentals pass null (adapters use payment.amount_mnt). */
+  plan: SubscriptionPlan | null;
   description: string;
 }
 
@@ -69,9 +70,11 @@ export interface PaymentAttempt {
 
 /** Metadata stashed in payment_attempts.request_payload at invoice time. */
 export interface AttemptMetadata {
-  plan_id: string;
+  plan_id: string | null;
   promo_code_id: string | null;
   bonus_days: number;
   discount_percent: number;
+  /** Set for per-movie rental checkouts instead of plan_id. */
+  movie_id?: string | null;
   [key: string]: unknown;
 }

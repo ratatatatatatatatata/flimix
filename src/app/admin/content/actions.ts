@@ -62,6 +62,7 @@ const movieSchema = z.object({
   backdrop_url: z.string().url("Арын зургийн URL буруу").nullable(),
   trailer_url: z.string().url("Трейлерийн URL буруу").nullable(),
   is_free: z.boolean(),
+  rental_price_mnt: z.coerce.number().int().min(0).max(100_000_000).nullable(),
   status: z.enum(["draft", "scheduled", "published"]),
   published_at: z.string().nullable(),
   genre_ids: z.array(z.string().uuid()),
@@ -136,6 +137,7 @@ export async function saveMovie(
         backdrop_url: optional(formData.get("backdrop_url")),
         trailer_url: optional(formData.get("trailer_url")),
         is_free: formData.get("is_free") === "on",
+        rental_price_mnt: optional(formData.get("rental_price_mnt")),
         status: String(formData.get("status") ?? "draft"),
         published_at: optional(formData.get("published_at")),
         genre_ids: formData.getAll("genre_ids").map(String),
@@ -171,6 +173,7 @@ export async function saveMovie(
         backdrop_url: input.backdrop_url,
         trailer_url: input.trailer_url,
         is_free: input.is_free,
+        rental_price_mnt: input.rental_price_mnt,
         status: input.status,
         published_at:
           input.status === "published"
@@ -502,7 +505,7 @@ export async function uploadImage(
     "media.upload_image",
     "storage_object",
     async ({ db }) => {
-      const kind = z.enum(["poster", "backdrop"]).parse(formData.get("kind"));
+      const kind = z.enum(["poster", "backdrop", "cast"]).parse(formData.get("kind"));
       const file = formData.get("file");
       if (!(file instanceof File) || file.size === 0) {
         throw new AdminActionError("Файл сонгоно уу.");
@@ -514,7 +517,8 @@ export async function uploadImage(
         throw new AdminActionError("Зургийн хэмжээ 5MB-аас хэтэрч болохгүй.");
       }
       const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
-      const path = `${kind === "poster" ? "posters" : "backdrops"}/${crypto.randomUUID()}.${ext}`;
+      const folder = kind === "poster" ? "posters" : kind === "backdrop" ? "backdrops" : "cast";
+      const path = `${folder}/${crypto.randomUUID()}.${ext}`;
 
       const { error } = await db.storage.from("media").upload(path, file, {
         contentType: file.type,
@@ -587,15 +591,19 @@ export async function uploadAudio(
 /* Inline cast / crew creation                                         */
 /* ------------------------------------------------------------------ */
 
-export async function createCastMember(name: string): Promise<ActionResult<CastMember>> {
+export async function createCastMember(
+  name: string,
+  photoUrl?: string | null,
+): Promise<ActionResult<CastMember>> {
   return runAdminAction<CastMember>(
     "content_manager",
     "cast_member.create",
     "cast_member",
     async ({ db }) => {
       const clean = z.string().min(1, "Нэр шаардлагатай").max(200).parse(name.trim());
+      const photo = photoUrl?.trim() ? z.string().url().parse(photoUrl.trim()) : null;
       const created = must(
-        await db.from("cast_members").insert({ name: clean }).select("*").single(),
+        await db.from("cast_members").insert({ name: clean, photo_url: photo }).select("*").single(),
         "Жүжигчин нэмэхэд алдаа",
       ) as CastMember;
       revalidatePath("/admin/content");

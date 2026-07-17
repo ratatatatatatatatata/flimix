@@ -106,6 +106,7 @@ export function MovieForm(props: MovieFormProps) {
   const [castIds, setCastIds] = useState<string[]>(props.selectedCastIds);
   const [crewIds, setCrewIds] = useState<string[]>(props.selectedCrewIds);
   const [newCastName, setNewCastName] = useState("");
+  const [newCastPhotoUrl, setNewCastPhotoUrl] = useState("");
   const [newCrewName, setNewCrewName] = useState("");
   const [newCrewRole, setNewCrewRole] = useState("");
   const [inlineError, setInlineError] = useState<string | null>(null);
@@ -153,12 +154,26 @@ export function MovieForm(props: MovieFormProps) {
     if (!newCastName.trim()) return;
     setInlineError(null);
     startAdd(async () => {
-      const res = await createCastMember(newCastName);
+      const res = await createCastMember(newCastName, newCastPhotoUrl || null);
       if (res.ok) {
         setCastMembers((prev) => [...prev, res.data]);
         setCastIds((prev) => [...prev, res.data.id]);
         setNewCastName("");
+        setNewCastPhotoUrl("");
       } else setInlineError(res.error);
+    });
+  };
+
+  const handleCastPhoto = (file: File | null) => {
+    if (!file) return;
+    setInlineError(null);
+    startAdd(async () => {
+      const fd = new FormData();
+      fd.set("kind", "cast");
+      fd.set("file", file);
+      const res = await uploadImage(fd);
+      if (res.ok) setNewCastPhotoUrl(res.data.url);
+      else setInlineError(res.error);
     });
   };
 
@@ -422,11 +437,26 @@ export function MovieForm(props: MovieFormProps) {
               ))}
               {castMembers.length === 0 ? <p className="px-2 py-1 text-xs text-mist-500">Бүртгэл алга</p> : null}
             </div>
-            <div className="mt-2 flex gap-2">
-              <Input placeholder="Шинэ жүжигчний нэр" value={newCastName} onChange={(e) => setNewCastName(e.target.value)} aria-label="Шинэ жүжигчний нэр" />
-              <Button type="button" variant="secondary" size="sm" onClick={addCast} loading={adding}>
-                <Plus className="h-3.5 w-3.5" aria-hidden /> Нэмэх
-              </Button>
+            <div className="mt-2 space-y-2">
+              <div className="flex gap-2">
+                <Input placeholder="Шинэ жүжигчний нэр" value={newCastName} onChange={(e) => setNewCastName(e.target.value)} aria-label="Шинэ жүжигчний нэр" />
+                <Button type="button" variant="secondary" size="sm" onClick={addCast} loading={adding}>
+                  <Plus className="h-3.5 w-3.5" aria-hidden /> Нэмэх
+                </Button>
+              </div>
+              <div className="flex items-center gap-2">
+                {newCastPhotoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- admin preview
+                  <img src={newCastPhotoUrl} alt="Жүжигчний зураг" className="h-9 w-9 rounded-full object-cover" />
+                ) : null}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={(e) => handleCastPhoto(e.target.files?.[0] ?? null)}
+                  aria-label="Жүжигчний зураг байршуулах"
+                  className="block w-full text-xs text-mist-400 file:mr-3 file:rounded-md file:border-0 file:bg-ink-700 file:px-3 file:py-1.5 file:text-mist-200"
+                />
+              </div>
             </div>
           </div>
           <div>
@@ -538,7 +568,20 @@ export function MovieForm(props: MovieFormProps) {
             <input type="checkbox" name="is_free" defaultChecked={movie?.is_free ?? false} className="h-4 w-4 accent-royal-500" />
             Үнэгүй үзэх боломжтой
           </label>
+          <Input
+            label="Түрээсийн үнэ (₮)"
+            name="rental_price_mnt"
+            type="number"
+            min={0}
+            step={100}
+            defaultValue={movie?.rental_price_mnt ?? ""}
+            placeholder="Хоосон = багцын эрхээр"
+          />
         </div>
+        <p className="text-xs text-mist-500">
+          Түрээсийн үнэ оруулбал энэ киног зөвхөн түрээсээр үзнэ (багцын эрх хамаарахгүй).
+          Хоосон орхивол багцын эрхтэй хэрэглэгчид үзнэ, «Үнэгүй» бол бүгдэд нээлттэй.
+        </p>
         {status === "published" ? (
           <div className="flex items-center gap-2">
             <Badge tone="warning">Анхаар</Badge>
