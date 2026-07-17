@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { Facebook, Instagram, Youtube } from "lucide-react";
+import { ChevronDown, Facebook, Instagram, Youtube } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
 import {
   getGenreCounts,
@@ -42,13 +42,36 @@ function WidgetHeading({ children }: { children: React.ReactNode }) {
   return <h3 className="mb-3 text-sm font-semibold text-white">{children}</h3>;
 }
 
+/**
+ * Footer column: collapsible <details> on mobile (keeps the page short),
+ * always-open static column from sm upward. Children render twice — they are
+ * cheap link lists, so the duplication is preferable to client JS.
+ */
+function FooterGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <>
+      <details className="group border-b border-ink-600/40 pb-2 sm:hidden">
+        <summary className="flex cursor-pointer list-none items-center justify-between py-2 text-sm font-semibold text-white [&::-webkit-details-marker]:hidden">
+          {title}
+          <ChevronDown className="h-4 w-4 text-mist-500 transition group-open:rotate-180" aria-hidden="true" />
+        </summary>
+        <div className="pb-2">{children}</div>
+      </details>
+      <div className="hidden sm:block">
+        <WidgetHeading>{title}</WidgetHeading>
+        {children}
+      </div>
+    </>
+  );
+}
+
 /* ------------------------------ data widgets ------------------------------- */
 
 function GenresWidget({ genres }: { genres: GenreCount[] }) {
   if (genres.length === 0) return null;
   return (
     <nav aria-label={t.genre}>
-      <WidgetHeading>{t.genre}</WidgetHeading>
+      <FooterGroup title={t.genre}>
       <ul className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm text-mist-400">
         {genres.map((g) => (
           <li key={g.slug}>
@@ -58,6 +81,7 @@ function GenresWidget({ genres }: { genres: GenreCount[] }) {
           </li>
         ))}
       </ul>
+      </FooterGroup>
     </nav>
   );
 }
@@ -66,7 +90,7 @@ function YearsWidget({ years }: { years: number[] }) {
   if (years.length === 0) return null;
   return (
     <nav aria-label={t.year}>
-      <WidgetHeading>{t.year}</WidgetHeading>
+      <FooterGroup title={t.year}>
       <ul className="grid grid-cols-3 gap-x-4 gap-y-2 text-sm text-mist-400">
         {years.map((y) => (
           <li key={y}>
@@ -76,6 +100,7 @@ function YearsWidget({ years }: { years: number[] }) {
           </li>
         ))}
       </ul>
+      </FooterGroup>
     </nav>
   );
 }
@@ -84,7 +109,7 @@ function TopRatedWidget({ items }: { items: TopRatedTitle[] }) {
   if (items.length === 0) return null;
   return (
     <nav aria-label="Шилдэг кинонууд">
-      <WidgetHeading>Шилдэг кинонууд</WidgetHeading>
+      <FooterGroup title="Шилдэг кинонууд">
       <ul className="space-y-2 text-sm text-mist-400">
         {items.map((item) => (
           <li key={`${item.type}-${item.slug}`}>
@@ -98,6 +123,7 @@ function TopRatedWidget({ items }: { items: TopRatedTitle[] }) {
           </li>
         ))}
       </ul>
+      </FooterGroup>
     </nav>
   );
 }
@@ -153,7 +179,7 @@ export function SiteFooter() {
             ))}
           </div>
           <nav aria-label="Цэс">
-            <WidgetHeading>Цэс</WidgetHeading>
+            <FooterGroup title="Цэс">
             <ul className="space-y-2 text-sm text-mist-400">
               {menu.map((m) => (
                 <li key={m.href}>
@@ -168,6 +194,7 @@ export function SiteFooter() {
                 </a>
               </li>
             </ul>
+            </FooterGroup>
           </nav>
         </div>
         <Suspense fallback={null}>

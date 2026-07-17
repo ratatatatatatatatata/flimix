@@ -16,9 +16,10 @@ import { createClient } from "@/lib/supabase/server";
 import { t } from "@/lib/i18n";
 
 const primaryLinks: { href: string; label: string }[] = [
-  { href: "/", label: "Эхлэл" },
+  { href: "/", label: "Нүүр" },
   { href: "/browse?type=movie", label: t.movies },
   { href: "/browse?type=series", label: t.multiPart },
+  { href: "/browse?sort=newest", label: "Шинээр нэмэгдсэн" },
 ];
 
 const guideLink: { href: string; label: string } = { href: "/#zaavar", label: "Заавар" };

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion, type Variants } from "framer-motion";
@@ -313,14 +314,14 @@ export function SearchOverlay({ open, onClose, trending = [] }: SearchOverlayPro
                         onClick={onResultClick}
                         className="group block"
                       >
-                        <div className="aspect-[2/3] overflow-hidden rounded-lg border border-ink-600/40 bg-ink-800">
+                        <div className="relative aspect-[2/3] overflow-hidden rounded-lg border border-ink-600/40 bg-ink-800">
                           {r.posterUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
+                            <Image
                               src={r.posterUrl}
                               alt=""
-                              loading="lazy"
-                              className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                              fill
+                              sizes="(max-width: 640px) 33vw, (max-width: 1024px) 20vw, 160px"
+                              className="object-cover transition duration-300 group-hover:scale-105"
                             />
                           ) : (
                             <div className="flex h-full w-full items-center justify-center text-mist-500">

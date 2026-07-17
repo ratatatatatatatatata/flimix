@@ -2,10 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --font-sans: "Inter", "Segoe UI", system-ui, sans-serif;
-  --font-display: "Inter", "Segoe UI", system-ui, sans-serif;
-}
+/* --font-sans / --font-display are provided by next/font in app/layout.tsx
+   (Inter for body, Manrope for display). Fallbacks live in tailwind.config. */
 
 @layer base {
   html {

@@ -3,11 +3,13 @@ import Link from "next/link";
 import { Monitor, Smartphone, Tablet, Tv } from "lucide-react";
 import { ContentRow } from "@/components/catalog/ContentRow";
 import { LandscapeCard } from "@/components/catalog/LandscapeCard";
+import { PosterCard } from "@/components/catalog/PosterCard";
 import {
   BillboardSkeleton,
   FeaturedBannerSkeleton,
   LandscapeRowSkeleton,
   PlanSectionSkeleton,
+  RowSkeleton,
 } from "@/components/ui/Skeletons";
 import { getSession } from "@/lib/auth";
 import {
@@ -145,14 +147,14 @@ async function LatestMoviesRow() {
       seeAllHref="/browse?type=movie&sort=newest"
     >
       {cards.map((m) => (
-        <LandscapeCard
+        <PosterCard
           key={`mv-${m.id}`}
           href={`/movie/${m.slug}`}
           title={m.title}
-          imageUrl={m.backdropUrl ?? m.posterUrl}
-          badge={m.isNew ? "ШИНЭ" : m.subtitleBadge}
+          posterUrl={m.posterUrl ?? m.backdropUrl}
+          cornerBadge={m.isNew ? "ШИНЭ" : m.subtitleBadge ?? undefined}
           rating={m.rating}
-          subtitle={m.year ? String(m.year) : null}
+          year={m.year ?? undefined}
         />
       ))}
     </ContentRow>
@@ -166,13 +168,13 @@ async function TopRatedRow() {
   return (
     <ContentRow title="ШИЛДЭГ КИНОНУУД" seeAllHref="/browse?sort=rating">
       {cards.map((c) => (
-        <LandscapeCard
+        <PosterCard
           key={`top-${c.type}-${c.slug}`}
           href={`/${c.type}/${c.slug}`}
           title={c.title}
-          imageUrl={c.backdropUrl ?? c.posterUrl}
+          posterUrl={c.posterUrl ?? c.backdropUrl}
           rating={c.rating}
-          subtitle={c.year ? String(c.year) : null}
+          year={c.year ?? undefined}
         />
       ))}
     </ContentRow>
@@ -434,11 +436,11 @@ export default function LandingPage() {
             <LatestEpisodesRow />
           </Suspense>
 
-          <Suspense fallback={<LandscapeRowSkeleton />}>
+          <Suspense fallback={<RowSkeleton />}>
             <LatestMoviesRow />
           </Suspense>
 
-          <Suspense fallback={<LandscapeRowSkeleton />}>
+          <Suspense fallback={<RowSkeleton />}>
             <TopRatedRow />
           </Suspense>
 
