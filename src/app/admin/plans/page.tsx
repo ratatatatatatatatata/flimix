@@ -14,7 +14,20 @@ import type { PromoCode, SubscriptionPlan } from "@/types/db";
 
 export const dynamic = "force-dynamic";
 
-function PlanForm({ plan }: { plan: SubscriptionPlan | null }) {
+interface MovieOption {
+  id: string;
+  title_mn: string;
+}
+
+function PlanForm({
+  plan,
+  movies,
+  selectedMovieIds,
+}: {
+  plan: SubscriptionPlan | null;
+  movies: MovieOption[];
+  selectedMovieIds: string[];
+}) {
   return (
     <form action={savePlan} className="space-y-4">
       {plan ? <input type="hidden" name="id" value={plan.id} /> : null}
@@ -47,6 +60,28 @@ function PlanForm({ plan }: { plan: SubscriptionPlan | null }) {
         <input type="checkbox" name="is_active" defaultChecked={plan?.is_active ?? true} className="h-4 w-4 accent-royal-500" />
         Идэвхтэй (сайтад харагдана)
       </label>
+      <div className="space-y-1.5">
+        <p className="text-sm text-mist-300">Багцад багтах кинонууд ({selectedMovieIds.length} сонгосон)</p>
+        <p className="text-xs text-mist-500">
+          Кино сонговол энэ багцын эрхтэй хэрэглэгч зөвхөн сонгосон киног үзнэ.
+          Юу ч сонгохгүй бол багц бүх контентод эрх нээнэ.
+        </p>
+        <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-ink-600 bg-ink-900 p-2">
+          {movies.map((m) => (
+            <label key={m.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm text-mist-300 hover:bg-ink-800">
+              <input
+                type="checkbox"
+                name="movie_ids"
+                value={m.id}
+                defaultChecked={selectedMovieIds.includes(m.id)}
+                className="h-3.5 w-3.5 accent-royal-500"
+              />
+              {m.title_mn}
+            </label>
+          ))}
+          {movies.length === 0 ? <p className="px-2 py-1 text-xs text-mist-500">Нийтлэгдсэн кино алга</p> : null}
+        </div>
+      </div>
       <Button type="submit" size="sm">{plan ? "Хадгалах" : "Багц үүсгэх"}</Button>
     </form>
   );
@@ -86,12 +121,27 @@ export default async function PlansPage({
   const tab = sp.tab === "promo" ? "promo" : "plans";
   const db = createAdminClient();
 
-  const [plansRes, promosRes] = await Promise.all([
+  const [plansRes, promosRes, moviesRes, planMoviesRes] = await Promise.all([
     db.from("subscription_plans").select("*").order("price_mnt"),
     db.from("promo_codes").select("*").order("valid_from", { ascending: false }),
+    db
+      .from("movies")
+      .select("id,title_mn")
+      .eq("status", "published")
+      .is("deleted_at", null)
+      .order("title_mn")
+      .limit(500),
+    db.from("plan_movies").select("plan_id,movie_id"),
   ]);
   const plans = (plansRes.data ?? []) as SubscriptionPlan[];
   const promos = (promosRes.data ?? []) as PromoCode[];
+  const movieOptions = (moviesRes.data ?? []) as { id: string; title_mn: string }[];
+  const planMovieMap = new Map<string, string[]>();
+  for (const r of (planMoviesRes.data ?? []) as { plan_id: string; movie_id: string }[]) {
+    const list = planMovieMap.get(r.plan_id) ?? [];
+    list.push(r.movie_id);
+    planMovieMap.set(r.plan_id, list);
+  }
 
   const tabCls = (active: boolean) =>
     `rounded-lg px-4 py-2 text-sm font-medium transition ${
@@ -112,7 +162,9 @@ export default async function PlansPage({
         <div className="space-y-4">
           <details className="rounded-xl border border-dashed border-ink-600 bg-ink-800/60">
             <summary className="cursor-pointer px-5 py-4 text-sm font-medium text-royal-300">+ Шинэ багц үүсгэх</summary>
-            <div className="border-t border-ink-700 p-5"><PlanForm plan={null} /></div>
+            <div className="border-t border-ink-700 p-5">
+              <PlanForm plan={null} movies={movieOptions} selectedMovieIds={[]} />
+            </div>
           </details>
 
           {plans.length === 0 ? (
@@ -129,7 +181,7 @@ export default async function PlansPage({
                   <ChevronDown className="h-4 w-4 text-mist-500 transition group-open:rotate-180" aria-hidden />
                 </summary>
                 <div className="space-y-4 border-t border-ink-700 p-5">
-                  <PlanForm plan={p} />
+                  <PlanForm plan={p} movies={movieOptions} selectedMovieIds={planMovieMap.get(p.id) ?? []} />
                   <form action={togglePlanActive}>
                     <input type="hidden" name="id" value={p.id} />
                     <button type="submit" className="text-xs text-mist-400 hover:text-white">

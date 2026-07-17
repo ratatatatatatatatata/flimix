@@ -85,7 +85,23 @@ export async function savePlan(formData: FormData): Promise<void> {
         ) as { id: string };
         entityId = created.id;
       }
-      return { data: null, entityId, details: { slug: input.slug, created: !input.id } };
+
+      // Sync the movies included in this plan (empty = plan covers everything).
+      const movieIds = z
+        .array(z.string().uuid())
+        .parse(formData.getAll("movie_ids").map(String));
+      await db.from("plan_movies").delete().eq("plan_id", entityId);
+      if (movieIds.length > 0) {
+        must(
+          await db
+            .from("plan_movies")
+            .insert(movieIds.map((movieId) => ({ plan_id: entityId, movie_id: movieId })))
+            .select("plan_id"),
+          "Багцын кино хадгалахад алдаа",
+        );
+      }
+
+      return { data: null, entityId, details: { slug: input.slug, created: !input.id, movies: movieIds.length } };
     },
   );
   revalidatePath("/admin/plans");

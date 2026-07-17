@@ -134,6 +134,26 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (subscriptionRequired && !isFree && !subscription) {
       return NextResponse.json({ error: t.subscriptionRequired }, { status: 403 });
     }
+    // Plan-scoped catalogs: when the subscriber's plan lists specific movies,
+    // it only grants those (an empty list keeps the plan all-access).
+    if (
+      subscriptionRequired &&
+      !isFree &&
+      subscription?.plan &&
+      contentType === "movie"
+    ) {
+      const { data: planMovieRows } = await admin
+        .from("plan_movies")
+        .select("movie_id")
+        .eq("plan_id", subscription.plan.id);
+      const allowed = (planMovieRows ?? []) as { movie_id: string }[];
+      if (allowed.length > 0 && !allowed.some((r) => r.movie_id === contentId)) {
+        return NextResponse.json(
+          { error: "Таны багцад энэ кино багтаагүй байна. Багцаа шинэчилнэ үү." },
+          { status: 403 },
+        );
+      }
+    }
   }
 
   // Concurrent stream limit per plan.
