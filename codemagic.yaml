@@ -26,6 +26,13 @@ workflows:
           npx cap sync ios || npx cap add ios && npx cap sync ios
       - name: Set up code signing
         script: xcode-project use-profiles
+      - name: Set unique build number
+        script: |
+          cd mobile/ios/App
+          # Each App Store upload needs a higher CFBundleVersion. Codemagic's
+          # BUILD_NUMBER increments on every build, guaranteeing uniqueness.
+          agvtool new-version -all "$BUILD_NUMBER"
+          echo "Set build number to $BUILD_NUMBER"
       - name: Build IPA
         script: |
           cd mobile/ios/App
